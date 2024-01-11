@@ -1,0 +1,12 @@
+#@description pipeline using MNL library
+#@key_label  "name"
+#@meta_label "type"
+
+[name="flreconstruct.plugins" type="flreconstruct::section"]
+plugins : string[1] = "FalaiseSkeletonModules"
+FalaiseSkeletonModules.directory : string = "@PROJECT_BINARY_DIR@"
+
+[name="pipeline" type="dpp::chain_module"]
+modules : string[1] = "Module1_SD"
+
+[name="Module1_SD" type="FalaiseSkeletonModule_SD"]
