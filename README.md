@@ -7,10 +7,10 @@ Compilation and usage at CC/IN2P3 using Falaise 5.1:
 source setup_ccin2p3_falaise51.sh
 
 mkdir build-falaise51
-cd build-falaise51
-cmake ..
+cd build-falaise51/
+cmake ../
 make
-cd ..
+cd ../
 
-flreconstruct -p build-falaise51/falaise-skeleton-module-pipeline.conf -i INPUT_FILE.brio
+flreconstruct -p build-falaise51/falaise-skeleton-module-pipeline.conf -i brio/mc-se82-2b0n-event.brio
 ```
