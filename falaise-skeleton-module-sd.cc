@@ -8,18 +8,19 @@ class falaise_skeleton_module_sd : public dpp::chain_module
 {
 
 public:
-
+  // Constructor
   falaise_skeleton_module_sd();
 
+  // Destructor
   virtual ~falaise_skeleton_module_sd();
-    
+
+  // Initialisation function
   virtual void initialize (const datatools::properties &,
                            datatools::service_manager &,
 			   dpp::module_handle_dict_type &);
 
+  // Event processing function
   dpp::chain_module::process_status process (datatools::things & event);
-
-  virtual void finalize ();
   
 private:
   int sd_event_counter;
@@ -31,10 +32,9 @@ private:
 
 ////////////////////////////////////////////////////////////////////
 
-// Macro to register the module in the global register of data processing modules:
+// Macro to add the module in the global register of data processing modules:
 // The module defined by this class 'falaise_skeleton_module_sd' will be registered
 // with the label ID 'FalaiseSkeletonModule_SD' (to use in pipeline configuration file)
-
 DPP_MODULE_REGISTRATION_IMPLEMENT(falaise_skeleton_module_sd, "FalaiseSkeletonModule_SD")
 
 
@@ -52,6 +52,8 @@ falaise_skeleton_module_sd::~falaise_skeleton_module_sd()
 
 void falaise_skeleton_module_sd::initialize (const datatools::properties &, datatools::service_manager &, dpp::module_handle_dict_type &)
 {
+  std::cout << "falaise_skeleton_module_sd::initialize() called" << std::endl;
+
   sd_event_counter = 0;
 
   this->_set_initialized(true);
@@ -73,12 +75,13 @@ dpp::chain_module::process_status falaise_skeleton_module_sd::process (datatools
 	{
     	  std::cout << "=> " << SD.get_step_hits(calo_hit_category).size() << " '" << calo_hit_category << "' step hit(s):" << std::endl;
 
-	  // browse the calorimeter step hits (mctools::base_step_hit)
+	  // Browse the calorimeter step hits
 	  for (const auto & a_step_hit : SD.get_step_hits(calo_hit_category))
 	    {
 	      const geomtools::geom_id & calo_geom_id = a_step_hit->get_geom_id();
-	      const double time_ns = a_step_hit->get_time_start() / CLHEP::ns;
+	      const double time_ns  = a_step_hit->get_time_start() / CLHEP::ns;
 	      const double edep_mev = a_step_hit->get_energy_deposit() / CLHEP::MeV; 
+
 	      std::cout << " - " << calo_geom_id << "   time = " << time_ns << " ns   edep = " << edep_mev << " MeV" << std::endl;
 	    }
 	}
@@ -94,16 +97,17 @@ dpp::chain_module::process_status falaise_skeleton_module_sd::process (datatools
     {
       std::cout << "=> " << SD.get_step_hits("gg").size() << " 'gg' step hit(s):" << std::endl;
 
+      // Browse the tracker step hits
       for (const auto & a_step_hit : SD.get_step_hits("gg"))
 	{
 	  const geomtools::geom_id & gg_geom_id = a_step_hit->get_geom_id();
 
+	  // Minimal ionisation approach distance to anode wire and position is stored in auxiliaries
 	  const datatools::properties & step_hit_aux = a_step_hit->get_auxiliaries();
 	  const double true_radius_cm = step_hit_aux.fetch_real(snemo::datamodel::gg_track::minimum_approach_distance_key())/CLHEP::cm;
-
 	  std::vector<double> minimum_approach_position;
 	  step_hit_aux.fetch(snemo::datamodel::gg_track::minimum_approach_position_key(), minimum_approach_position);
-	  const double & true_height_m = minimum_approach_position.at(2)/CLHEP::m;
+	  const double true_height_m = minimum_approach_position.at(2)/CLHEP::m;
 
 	  std::cout << " - " << gg_geom_id << "   radius = " << true_radius_cm << " cm   height = " << true_height_m << " m" << std::endl;
 	}
@@ -116,8 +120,3 @@ dpp::chain_module::process_status falaise_skeleton_module_sd::process (datatools
   return dpp::base_module::PROCESS_SUCCESS;
 }
 
-
-void falaise_skeleton_module_sd::finalize()
-{
-  std::cout << "falaise_skeleton_module_sd::finalize()" << std::endl;
-}
