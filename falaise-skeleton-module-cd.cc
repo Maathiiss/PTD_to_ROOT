@@ -22,7 +22,9 @@ public:
   dpp::chain_module::process_status process (datatools::things & event);
   
 private:
-  int cd_event_counter;
+  int  cd_event_counter;
+  bool cd_calo_details;
+  bool cd_tracker_details;
 
   // Macro to register the module
   DPP_MODULE_REGISTRATION_INTERFACE(falaise_skeleton_module_cd);
@@ -49,11 +51,19 @@ falaise_skeleton_module_cd::~falaise_skeleton_module_cd()
 }
 
 
-void falaise_skeleton_module_cd::initialize (const datatools::properties &, datatools::service_manager &, dpp::module_handle_dict_type &)
+void falaise_skeleton_module_cd::initialize (const datatools::properties & module_properties, datatools::service_manager &, dpp::module_handle_dict_type &)
 {
   std::cout << "falaise_skeleton_module_cd::initialize() called" << std::endl;
 
   cd_event_counter = 0;
+
+  if ( module_properties.has_key("calo_details"))
+    cd_calo_details = module_properties.fetch_boolean("calo_details");
+  else cd_calo_details = false;
+
+  if ( module_properties.has_key("tracker_details"))
+    cd_tracker_details = module_properties.fetch_boolean("tracker_details");
+  else cd_tracker_details = false;
 
   this->_set_initialized(true);
 }
@@ -73,24 +83,29 @@ dpp::chain_module::process_status falaise_skeleton_module_cd::process (datatools
 
   // Browse calibrated calorimeter hits
   std::cout << "=> " << CD.calorimeter_hits().size() << " calo hit(s)" << std::endl;
-  for (const auto & calo_hit : CD.calorimeter_hits())
+  if (cd_calo_details)
     {
-      const geomtools::geom_id & calo_geom_id = calo_hit->get_geom_id();
-      const double calo_time_ns  = calo_hit->get_time() / CLHEP::ns;
-      const double calo_energy_mev = calo_hit->get_energy() / CLHEP::MeV; 
-      
-      std::cout << " - " << calo_geom_id << "   time = " << calo_time_ns << " ns   edep = " << calo_energy_mev << " MeV" << std::endl;
+      for (const auto & calo_hit : CD.calorimeter_hits())
+	{
+	  const geomtools::geom_id & calo_geom_id = calo_hit->get_geom_id();
+	  const double calo_time_ns  = calo_hit->get_time() / CLHEP::ns;
+	  const double calo_energy_mev = calo_hit->get_energy() / CLHEP::MeV; 
+	  
+	  std::cout << " - " << calo_geom_id << "   time = " << calo_time_ns << " ns   edep = " << calo_energy_mev << " MeV" << std::endl;
+	}
     }
 
   // Browse calibrated tracker hits
   std::cout << "=> " << CD.tracker_hits().size() << " tracker hit(s)" << std::endl;
-  for (const auto & tracker_hit : CD.tracker_hits())
+  if (cd_tracker_details)
     {
-      const geomtools::geom_id & tracker_geom_id = tracker_hit->get_geom_id();
-      const double tracker_radius_cm = tracker_hit->get_r() / CLHEP::cm;
-      const double tracker_height_m  = tracker_hit->get_z() / CLHEP::m;
-      
-      std::cout << " - " << tracker_geom_id << "   r = " << tracker_radius_cm << " cm   z = " << tracker_height_m << " m" << std::endl;
+      for (const auto & tracker_hit : CD.tracker_hits())
+	{
+	  const geomtools::geom_id & tracker_geom_id = tracker_hit->get_geom_id();
+	  const double tracker_radius_cm = tracker_hit->get_r() / CLHEP::cm;
+	  const double tracker_height_m  = tracker_hit->get_z() / CLHEP::m;
+	  std::cout << " - " << tracker_geom_id << "   r = " << tracker_radius_cm << " cm   z = " << tracker_height_m << " m" << std::endl;
+	}
     }
 
   return dpp::base_module::PROCESS_SUCCESS;
