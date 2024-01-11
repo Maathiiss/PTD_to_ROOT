@@ -7,7 +7,7 @@ plugins : string[1] = "FalaiseSkeletonModules"
 FalaiseSkeletonModules.directory : string = "@PROJECT_BINARY_DIR@"
 
 [name="pipeline" type="dpp::chain_module"]
-modules : string[2] = "Module1" "Module2"
+modules : string[3] = "Module1" "Module2" "Module3"
 
 [name="Module1" type="FalaiseSkeletonModule_SD"]
 calo_details : boolean = false
@@ -16,3 +16,6 @@ tracker_details : boolean = false
 [name="Module2" type="FalaiseSkeletonModule_CD"]
 calo_details : boolean = false
 tracker_details : boolean = false
+
+[name="Module3" type="FalaiseSkeletonModule_TCD"]
+tcd_details : boolean = true
