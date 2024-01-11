@@ -7,6 +7,8 @@ plugins : string[1] = "FalaiseSkeletonModules"
 FalaiseSkeletonModules.directory : string = "@PROJECT_BINARY_DIR@"
 
 [name="pipeline" type="dpp::chain_module"]
-modules : string[1] = "Module1_SD"
+modules : string[1] = "Module1" "Module2"
 
-[name="Module1_SD" type="FalaiseSkeletonModule_SD"]
+[name="Module1" type="FalaiseSkeletonModule_SD"]
+
+[name="Module2" type="FalaiseSkeletonModule_CD"]

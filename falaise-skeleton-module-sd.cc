@@ -61,10 +61,16 @@ void falaise_skeleton_module_sd::initialize (const datatools::properties &, data
 
 dpp::chain_module::process_status falaise_skeleton_module_sd::process (datatools::things & event)
 {
-  std::cout << "======== SD bank of event " << sd_event_counter++ << " ========" << std::endl;
+  // Skip processing if SD bank is not present
+  if (!event.has("SD"))
+    {
+      std::cout << "======== no SD bank in event " << sd_event_counter++ << " ========" << std::endl;
+      return dpp::base_module::PROCESS_SUCCESS;
+    }
 
   // Retrieve the SD bank  
   const mctools::simulated_data & SD = event.get<mctools::simulated_data>("SD");
+  std::cout << "======== SD bank of event " << sd_event_counter++ << " ========" << std::endl;
 
   // Calorimeter step hit categories (3 differents labels)
   const std::vector<std::string> calo_hit_categories = {"calo", "xcalo", "gveto"};
