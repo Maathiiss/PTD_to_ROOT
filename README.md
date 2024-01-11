@@ -1,6 +1,24 @@
 # Falaise Skeleton Modules
 
-Example of Falaise modules retrieving and browsing data banks: SD, CD, etc ...
+Example of Falaise modules retrieving and browsing different data banks: SD, CD, etc ...
+
+`falaise-skeleton-module-sd.cc`
+Skeleton module browsing SD bank (Simulated Data)
+
+`falaise-skeleton-module-cd.cc`
+Skeleton module browsing CD bank (Calibrated Data)
+
+`falaise-skeleton-module-tcd.cc`
+Skeleton module browsing TCD bank (Tracker Clustering Data)
+
+`falaise-skeleton-module-ttd.cc`
+Skeleton module browsing TTD bank (Tracker Trajectory Data)
+
+`falaise-skeleton-module-ptd.cc`
+Skeleton module browsing PTD bank (Particle Track Data)
+
+other modules to come soon for UDD and pCD banks ...
+
 
 Compilation and usage at CC/IN2P3 using Falaise 5.1:
 ```
