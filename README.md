@@ -17,7 +17,7 @@ Skeleton module browsing TTD bank (Tracker Trajectory Data)
 `falaise-skeleton-module-ptd.cc`
 Skeleton module browsing PTD bank (Particle Track Data)
 
-other modules to come soon for UDD and pCD banks ...
+Other modules to come soon for UDD and pCD banks ...
 
 
 Compilation and usage at CC/IN2P3 using Falaise 5.1:
@@ -30,5 +30,6 @@ cmake ../
 make
 cd ../
 
+# run the demo pipeline with a nice 2b0n simulated event
 flreconstruct -p build-falaise51/falaise-skeleton-module-pipeline.conf -i brio/mc-se82-2b0n-event.brio
 ```
