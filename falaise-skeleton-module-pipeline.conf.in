@@ -13,8 +13,8 @@ FalaiseSkeletonModules.directory : string = "@PROJECT_BINARY_DIR@"
 modules : string[6] = "Module0" "Module1" "Module2" "Module3" "Module4" "Module5"
 
 [name="Module0" type="FalaiseSkeletonModule_UDD"]
-calo_details : boolean = false
-tracker_details : boolean = false
+calo_details : boolean = true
+tracker_details : boolean = true
 
 [name="Module1" type="FalaiseSkeletonModule_SD"]
 calo_details : boolean = false

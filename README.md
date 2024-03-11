@@ -2,6 +2,9 @@
 
 Example of Falaise modules retrieving and browsing different data banks: SD, CD, etc ...
 
+`falaise-skeleton-module-udd.cc`
+Skeleton module browsing UDD bank (Unified Digitized Data)
+
 `falaise-skeleton-module-sd.cc`
 Skeleton module browsing SD bank (Simulated Data)
 
