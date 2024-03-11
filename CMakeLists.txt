@@ -5,6 +5,7 @@ project(FalaiseSkeletonModules)
 find_package(Falaise REQUIRED)
 
 add_library(FalaiseSkeletonModules SHARED
+            falaise-skeleton-module-udd.cc
             falaise-skeleton-module-sd.cc
             falaise-skeleton-module-cd.cc
             falaise-skeleton-module-tcd.cc

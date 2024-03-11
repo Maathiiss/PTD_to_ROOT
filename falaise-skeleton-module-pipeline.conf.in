@@ -2,13 +2,19 @@
 #@key_label  "name"
 #@meta_label "type"
 
+[name="flreconstruct" type="flreconstruct::section"]
+experimentalSetupURN : string = "urn:snemo:demonstrator:setup:1.0"
+
 [name="flreconstruct.plugins" type="flreconstruct::section"]
 plugins : string[1] = "FalaiseSkeletonModules"
 FalaiseSkeletonModules.directory : string = "@PROJECT_BINARY_DIR@"
 
 [name="pipeline" type="dpp::chain_module"]
-modules : string[5] = "Module1" "Module2" "Module3" "Module4" "Module5"
+modules : string[6] = "Module0" "Module1" "Module2" "Module3" "Module4" "Module5"
 
+[name="Module0" type="FalaiseSkeletonModule_UDD"]
+calo_details : boolean = false
+tracker_details : boolean = false
 
 [name="Module1" type="FalaiseSkeletonModule_SD"]
 calo_details : boolean = false
@@ -26,3 +32,4 @@ ttd_details : boolean = false
 
 [name="Module5" type="FalaiseSkeletonModule_PTD"]
 ptd_details : boolean = false
+
