@@ -301,7 +301,6 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	vertex_3D_start[currentTrackID].push_back({new_stepHit.get_position_start().getX(), new_stepHit.get_position_start().getY(), new_stepHit.get_position_start().getZ()});
 	vertex_3D_end[currentTrackID].push_back({new_stepHit.get_position_stop().getX(), new_stepHit.get_position_stop().getY(), new_stepHit.get_position_stop().getZ()});
 	time[currentTrackID].push_back(new_stepHit.get_time_start());
-
 	SD_material[currentTrackID].push_back(new_stepHit.get_material_name());
 
 	if(new_stepHit.has_creator_process_name()){
@@ -324,6 +323,8 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	    else if ((abs(vertex_3D_start[i][j-1][0]) > 2) != (abs(vertex_3D_start[i][j][0]) > 2)){
 	      vertex[i-1].push_back("foil");
 	    }
+
+	    
 	    double start_p1[3] = {vertex_3D_start[i][j-1][0], vertex_3D_start[i][j-1][1], vertex_3D_start[i][j-1][2]};
 	    double end_p1[3] = {vertex_3D_end[i][j-1][0], vertex_3D_end[i][j-1][1], vertex_3D_end[i][j-1][2]};
 	    double start_p2[3] = {vertex_3D_start[i][j][0], vertex_3D_start[i][j][1], vertex_3D_start[i][j][2]};
@@ -345,6 +346,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	    if((vertex[i][j-1]=="calo" && vertex[i][j]=="foil") || (vertex[i][j-1]=="foil" && vertex[i][j]=="calo")){
 	      nb_elec_SD_per_event++;
 	      j++;
+	      
 	    }
 	  }
 	}

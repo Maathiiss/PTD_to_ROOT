@@ -45,12 +45,12 @@ private:
   int cellules_non_associated, number_of_kinks;
   bool ptd_details, has_an_electron_and_positron, has_SD_electron_and_positron, has_SD_two_electrons, opposite_side_e_gamma, same_side_elec, same_cluster_elec, has_a_same, ttd_details, sd_calo_details, sd_tracker_details, hit_the_same_calo_hit;
   int event_number;
-  double diff_time_elec, angle_3D_between_ep_em, delta_y_elec, delta_z_elec, energy_elec_sum, corrected_energy_elec_sum, time_of_flight_gamma, internal_theoretical_time_diff, external_theoretical_time_diff,t1_th, t2_th, start_run_time, end_run_time, delta_r_calo, kink_angle;
-  int nb_gamma, nb_elec_ptd_per_event,nb_elec_SD_per_event;
-  vector<string>  type_elec, g4_process, material;
+  double diff_time_elec, angle_2D_between_ep_em, angle_3D_between_ep_em, delta_y_elec, delta_z_elec, energy_elec_sum, corrected_energy_elec_sum, time_of_flight_gamma, internal_theoretical_time_diff, external_theoretical_time_diff,t1_th, t2_th, start_run_time, end_run_time, delta_r_calo;
+  int nb_gamma, nb_elec_ptd_per_event, kink_angle;
+  vector<string>  type_elec;
   vector<int> gamma_type, num_om;
-  vector<double> time_gamma, time_gamma_before, time_gamma_after, angle_SD;
-  vector<double> energy_gamma, energy_elec, corrected_energy_elec, time_elec,track_lenght, energy_gamma_after, SD_time;
+  vector<double> time_gamma, time_gamma_before, time_gamma_after;
+  vector<double> energy_gamma, energy_elec, corrected_energy_elec, time_elec,track_lenght, energy_gamma_after;
   vector<double> vertex_3D_start_x, vertex_3D_start_y, vertex_3D_start_z,vertex_3D_end_x, vertex_3D_end_y, vertex_3D_end_z, vertex_gamma, kink_x, kink_y, kink_z;
   vector<int> side_elec, cluster_elec_num;
   TFile *save_file;
@@ -77,11 +77,6 @@ falaise_skeleton_module_ptd::falaise_skeleton_module_ptd()
   tree->Branch("event_number", &event_number);
   tree->Branch("has_SD_electron_and_positron", &has_SD_electron_and_positron);
   tree->Branch("has_SD_two_electrons", &has_SD_two_electrons);
-  tree->Branch("nb_elec_SD_per_event", &nb_elec_SD_per_event);
-  tree->Branch("angle_SD", &angle_SD);
-  tree->Branch("g4_process", &g4_process);
-  tree->Branch("material", &material);
-  tree->Branch("SD_time", &SD_time);
   tree->Branch("nb_gamma", &nb_gamma);
   tree->Branch("gamma_type", &gamma_type);
   tree->Branch("time_gamma", &time_gamma);
@@ -111,6 +106,7 @@ falaise_skeleton_module_ptd::falaise_skeleton_module_ptd()
   tree->Branch("corrected_energy_elec_sum", &corrected_energy_elec_sum);
   tree->Branch("delta_y_elec", &delta_y_elec);
   tree->Branch("delta_z_elec", &delta_z_elec);
+  tree->Branch("angle_2D_between_ep_em", &angle_2D_between_ep_em);
   tree->Branch("angle_3D_between_ep_em", &angle_3D_between_ep_em);
   tree->Branch("has_a_same", &has_a_same);
   tree->Branch("hit_the_same_calo_hit", &hit_the_same_calo_hit);
@@ -165,29 +161,6 @@ void falaise_skeleton_module_ptd::initialize (const datatools::properties & modu
   this->_set_initialized(true);
 }
 
-
-double compute_angle(const double* vertex_start_p1, const double* vertex_end_p1,
-		     const double* vertex_start_p2, const double* vertex_end_p2)
-{
-  double v1[3] = {
-        vertex_end_p1[0] - vertex_start_p1[0], 
-        vertex_end_p1[1] - vertex_start_p1[1],  
-        vertex_end_p1[2] - vertex_start_p1[2] 
-    };
-    double v2[3] = {
-        vertex_end_p2[0] - vertex_start_p2[0], 
-        vertex_end_p2[1] - vertex_start_p2[1], 
-        vertex_end_p2[2] - vertex_start_p2[2]   
-    };
-    double dot_product = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
-    double norm_v1 = std::sqrt(v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2]);
-    double norm_v2 = std::sqrt(v2[0] * v2[0] + v2[1] * v2[1] + v2[2] * v2[2]);
-    double angle = std::acos(dot_product / (norm_v1 * norm_v2)) * (180.0 / M_PI);  
-    return angle;
-}
-
-
-
 dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatools::things & event)
 {
   // Skip processing if PTD bank is not present
@@ -204,7 +177,6 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
   nb_gamma=0;
   vertex_gamma.clear();
   nb_elec_ptd_per_event=0;
-  nb_elec_SD_per_event=0;
   cellules_non_associated=0;
   gamma_type.clear();
   time_gamma.clear();
@@ -238,11 +210,8 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
   diff_time_elec= 0;
   delta_y_elec=0;
   delta_z_elec=0;
+  angle_2D_between_ep_em = 0.0;
   angle_3D_between_ep_em = 0.0;
-  angle_SD.clear();
-  g4_process.clear();
-  material.clear();
-  SD_time.clear();
   delta_r_calo=0.0;
   has_an_electron_and_positron = 0;
   has_SD_two_electrons=0;
@@ -269,175 +238,9 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	has_SD_electron_and_positron = true;
       }
     }
-      
-    vector<int> old_step_hit;
-    vector<double> time_SD;
-    if (SD.has_step_hits("__visu.tracks")) {
-      for (UInt_t ihit = 0; ihit < SD.get_number_of_step_hits("__visu.tracks"); ihit++){
-	auto stepHit = SD.get_step_hit("__visu.tracks", ihit);
-	if(stepHit.get_particle_name() != "gamma" && stepHit.get_particle_name() != "alpha"){
-	  old_step_hit.push_back(ihit);
-	  time_SD.push_back(stepHit.get_time_start());
-	}
-      }
-      std::vector<std::pair<double, int>> paired;
-      for (size_t i = 0; i < old_step_hit.size(); i++) {
-	paired.push_back({time_SD[i], old_step_hit[i]});
-      }
-      std::sort(paired.begin(), paired.end());
-
-      std::vector<std::vector<std::array<double, 3>>> vertex_3D_start(50);
-      std::vector<std::vector<std::array<double, 3>>> vertex_3D_end(50);
-      std::vector<std::vector<double>> time(50);
-      std::vector<std::vector<string>> process(50);
-      std::vector<std::vector<string>> SD_material(50);
-      int track_max=0;
-      for (size_t i = 0; i < paired.size(); i++) {
-	auto new_stepHit = SD.get_step_hit("__visu.tracks", paired[i].second);
-	int currentTrackID = new_stepHit.get_track_id();
-	if(currentTrackID>track_max){
-	  track_max=currentTrackID;
-	}
-	vertex_3D_start[currentTrackID].push_back({new_stepHit.get_position_start().getX(), new_stepHit.get_position_start().getY(), new_stepHit.get_position_start().getZ()});
-	vertex_3D_end[currentTrackID].push_back({new_stepHit.get_position_stop().getX(), new_stepHit.get_position_stop().getY(), new_stepHit.get_position_stop().getZ()});
-	time[currentTrackID].push_back(new_stepHit.get_time_start());
-
-	SD_material[currentTrackID].push_back(new_stepHit.get_material_name());
-
-	if(new_stepHit.has_creator_process_name()){
-	  process[currentTrackID].push_back(new_stepHit.get_creator_process_name());
-	}
-	else{
-	  process[currentTrackID].push_back("no_process");		    
-	}
-      }    
-      
-
-      std::vector<vector<string>> vertex;
-      for (size_t i = 1; i < track_max+1; i++) {
-	for(size_t j=0; j<vertex_3D_start[i].size(); j++){
-	  vertex.push_back({});	
-	  if(j>0){
-	    if ((abs(vertex_3D_start[i][j-1][0]) > 400) != (abs(vertex_3D_start[i][j][0]) > 400)){
-	      vertex[i-1].push_back("calo");
-	    }
-	    else if ((abs(vertex_3D_start[i][j-1][0]) > 2) != (abs(vertex_3D_start[i][j][0]) > 2)){
-	      vertex[i-1].push_back("foil");
-	    }
-	    double start_p1[3] = {vertex_3D_start[i][j-1][0], vertex_3D_start[i][j-1][1], vertex_3D_start[i][j-1][2]};
-	    double end_p1[3] = {vertex_3D_end[i][j-1][0], vertex_3D_end[i][j-1][1], vertex_3D_end[i][j-1][2]};
-	    double start_p2[3] = {vertex_3D_start[i][j][0], vertex_3D_start[i][j][1], vertex_3D_start[i][j][2]};
-	    double end_p2[3] = {vertex_3D_end[i][j][0], vertex_3D_end[i][j][1], vertex_3D_end[i][j][2]};
-	    angle_SD.push_back(compute_angle(start_p1, end_p1, start_p2,end_p2));
-	    g4_process.push_back(process[i][j]);
-	    material.push_back(SD_material[i][j]);
-	    SD_time.push_back(time[i][j]);
-	  }
-	}	
-      }
-      
-      for(int i=0; i<vertex.size(); i++){
-	if(vertex[i].size()<1){
-	  continue;
-	}
-	for(int j=0; j<vertex[i].size(); j++){
-	  if(j>0){
-	    if((vertex[i][j-1]=="calo" && vertex[i][j]=="foil") || (vertex[i][j-1]=="foil" && vertex[i][j]=="calo")){
-	      nb_elec_SD_per_event++;
-	      j++;
-	    }
-	  }
-	}
-      }
-    }
   }
-  
 
 
-
-
-  
-  //     for (size_t i = 0; i < paired.size(); i++) {	
-  // 	auto new_stepHit = SD.get_step_hit("__visu.tracks", paired[i].second);
-  // 	if(i>0){
-  // 	  auto previous_stepHit = SD.get_step_hit("__visu.tracks", paired[i-1].second);
-  // 	  if(new_stepHit.get_track_id() == previous_stepHit.get_track_id()){
-  // 	    if(abs(previous_stepHit.get_position_start().getX())<400 && abs(new_stepHit.get_position_start().getX())>400){
-  // 	      cout<<"vertex calo "<<endl;                                                             
-  // 	    }
-  // 	    else if(abs(previous_stepHit.get_position_start().getX())<2 && abs(new_stepHit.get_position_start().getX())>2){
-  // 	      cout<<"vertex feuille source "<<endl;
-  // 	    }
-  // 	  }
-  // 	}
-  //     }
-  //   }
-  // }
-  // if(stepHit.has_creator_process_name ()){
-    // cout<<"process "<<stepHit.get_creator_process_name()<<endl;
-	// }
-
-
-	  // currentTrackID = stepHit.get_track_id();
-  // 	if(event_number==2){
-  // 	  if(currentTrackID==1){
-  // 	    if(ihit>0){
-  // 	      cout<<"vertex x = "<<stepHit.get_position_start().getX()<<endl;
-  // 	      double step_pos = stepHit.get_position_start().getX();
-  // 	      auto last_step_hit = SD.get_step_hit("__visu.tracks", ihit-1);
-  // 	      double last_step_pos = last_step_hit.get_position_start().getX();
-  // 	      // cout<<"vertex x = "<<step_pos<<" last vertex x "<<last_step_pos<<endl; 
-  // 	      // cout<<"diff "<<abs(step_pos-last_step_pos)<<endl;
-  // 	      if(abs(step_pos-last_step_pos)<10 && abs(last_step_pos)<420 && abs(step_pos)>420){
-  // 		cout<<"vertex calo "<<endl;
-  // 	      }
-  // 	      if(abs(step_pos-last_step_pos)<10 && abs(last_step_pos)<40 && abs(step_pos)>40){
-  // 		cout<<"vertex feuille source "<<endl;
-  // 	      }
-  // 	    }
-  // 	  }
-  // 	  // cout<<"material g4 "<<stepHit.get_g4_volume_name()<<endl;
-  // 	  //cout<<"track "<<currentTrackID<<endl;
-  // 	  // cout<<"vertex x = "<<stepHit.get_position_start().getX() << " y = "<<stepHit.get_position_start().getY()<<" z = "<<stepHit.get_position_start().getZ()<<endl;
-  // 	  // cout<<"time "<<stepHit.get_time_start()<<endl;
-  // 	  // cout<<"volume entering "<<stepHit.is_entering_volume()<<endl;
-  // 	  // cout<<"volume leaving "<<stepHit.is_leaving_volume()<<endl;
-	  
-  // 	}
-  // 	if(currentTrackID>track_max){
-  // 	  track_max=currentTrackID;
-  // 	}
-  // 	if(stepHit.get_particle_name() == "e-"){
-  // 	  //cout<<"materials "<<stepHit.get_material_name()<<endl;
-  // 	  //if (stepHit.has_material_name() == true){ //->calo has no materials
-  // 	  // cout<<"materials "<<stepHit.get_material_name()<<endl;
-  // 	  // cout<<"current track id "<<currentTrackID<<endl;
-  // 	  if(stepHit.get_material_name()=="bb_source_material.basic"){
-  // 	    track_material[currentTrackID][0]="bb_source_material.basic";
-  // 	  }
-  // 	  else if(stepHit.get_material_name()=="tracking_gas"){
-  // 	    track_material[currentTrackID][1]="tracking_gas";
-  // 	  }
-  // 	  else if(stepHit.get_material_name()==""){
-  // 	    track_material[currentTrackID][2]="calo";
-	    
-  // 	  }
-  // 	}
-  //     }	
-  //   }//end visu
-  //   for(int k=1; k<track_max+1; k++){
-  //     if(track_material[k][0]=="bb_source_material.basic" && track_material[k][1]=="tracking_gas" && track_material[k][2]=="calo"){
-  // 	nb_elec_SD_per_event++;
-  //     }	   
-  //   }
-  // }
-	  
-  
-
-
-  
-  
-  
   // PTD extraction
   if (ptd_details)    
     {
@@ -533,18 +336,6 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 		}
 	    }
 	    if(vertex_close_to_the_source && vertex_associated_to_a_calo){
-	      const auto& trajectory_pattern_elec = particle->get_trajectory_handle()->get_pattern();
-	      int nb_kinks_elec = trajectory_pattern_elec.number_of_kinks();
-	      if(nb_kinks_elec==1){
-		double x2 = trajectory_pattern_elec.get_kink(0).getX();
-		double y2 = trajectory_pattern_elec.get_kink(0).getY();
-		double z2 = trajectory_pattern_elec.get_kink(0).getZ();
-		double dot_product = (x2 - x_foil) * (x_calo - x2) + (y2 - y_foil) * (y_calo - y2) + (z2 - z_foil) * (z_calo - z2);
-		double norm_u = sqrt((x2 - x_foil) * (x2 - x_foil) + (y2 - y_foil) * (y2 - y_foil) + (z2 - z_foil) * (z2 - z_foil));
-		double norm_v = sqrt((x_calo - x2) * (x_calo - x2) + (y_calo - y2) * (y_calo - y2) + (z_calo - z2) * (z_calo - z2));
-		kink_angle=(180.0/M_PI)*acos(dot_product / (norm_u * norm_v));
-	      }
-	      
 	      vertex_3D_start_x.push_back(x_foil);
               vertex_3D_start_y.push_back(y_foil);
               vertex_3D_start_z.push_back(z_foil);
@@ -572,7 +363,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 		  }
 	      }
 	      if(nb_kinks>0){//looking if this particle get kinks
-		kinks_vec.push_back({trajectory_pattern.get_kink(0).getX(),trajectory_pattern.get_kink(0).getY(),trajectory_pattern.get_kink(0).getZ()});
+		kinks_vec.push_back({trajectory_pattern.get_kink(0).getY(),trajectory_pattern.get_kink(0).getZ()});
 	      }
 	      else{
 		kinks_vec.push_back({});
@@ -601,8 +392,27 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	    cellules_non_associated++;
 	  }
 	}//end loop on particle
+      if(nb_kinks_save==1 && nb_elec_ptd_per_event==1){
+        double x1 = vertex_3D_start_x[0];
+        double y1 = vertex_3D_start_y[0];
+        double z1 = vertex_3D_start_z[0];
+        double x2 = kink_x[0];
+        double y2 = kink_y[0];
+        double z2 = kink_z[0];
+	double x3 = vertex_3D_end_x[0];
+        double y3 = vertex_3D_end_y[0];
+        double z3 = vertex_3D_end_z[0];
+	double dot_product = (x2 - x1) * (x3 - x2) + (y2 - y1) * (y3 - y2) + (z2 - z1) * (z3 - z2);
+	double norm_u = sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1) + (z2 - z1) * (z2 - z1));
+        double norm_v = sqrt((x3 - x2) * (x3 - x2) + (y3 - y2) * (y3 - y2) + (z3 - z2) * (z3 - z2));
+        kink_angle=(180.0/M_PI)*acos(dot_product / (norm_u * norm_v));
+      }
       
-    
+
+
+      
+
+
 
 
       //check number if electrons clusters are the same
@@ -688,9 +498,6 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
     
 
       nb_elec_ptd_per_event=indices_calo_final.size();
-    
-
-      
       if(nb_elec_ptd_per_event==2){	
 	if(num_om[indices_calo_final.at(0)]==num_om[indices_calo_final.at(1)]){
 	  hit_the_same_calo_hit=true;
@@ -728,31 +535,31 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	double z1 = vertex_3D_start_z[indices_calo_final.at(0)];
 	double x1_ = vertex_3D_start_x[indices_calo_final.at(1)];
 	double y1_ = vertex_3D_start_y[indices_calo_final.at(1)];
-	double z1_ = vertex_3D_start_z[indices_calo_final.at(1)];	
+	double z1_ = vertex_3D_start_z[indices_calo_final.at(1)];
+	
 	//ending point of the two particles
 	double x2 = vertex_3D_end_x[indices_calo_final.at(0)];
 	double y2 = vertex_3D_end_y[indices_calo_final.at(0)];
 	double z2 = vertex_3D_end_z[indices_calo_final.at(0)];
 	double x2_ = vertex_3D_end_x[indices_calo_final.at(1)];
 	double y2_ = vertex_3D_end_y[indices_calo_final.at(1)];
-	double z2_ = vertex_3D_end_z[indices_calo_final.at(1)];	
+	double z2_ = vertex_3D_end_z[indices_calo_final.at(1)];
 	if(kinks_vec[indices_calo_final.at(0)].size()>0){
-	  x2 = kinks_vec[indices_calo_final.at(0)][0];
-	  y2 = kinks_vec[indices_calo_final.at(0)][1];
-	  z2 = kinks_vec[indices_calo_final.at(0)][2];
+	  y2 = kinks_vec[indices_calo_final.at(0)][0];
+	  z2 = kinks_vec[indices_calo_final.at(0)][1];
 	}
 	if(kinks_vec[indices_calo_final.at(1)].size()>0){
-	  x2 = kinks_vec[indices_calo_final.at(1)][0];
-	  y2 = kinks_vec[indices_calo_final.at(1)][1];
-	  z2 = kinks_vec[indices_calo_final.at(1)][2];
+	  y2 = kinks_vec[indices_calo_final.at(1)][0];
+	  z2 = kinks_vec[indices_calo_final.at(1)][1];
 	}
-	double start_p1[3] = {x1, y1, z1};
-	double start_p2[3] = {x1_, y1_, z1_};
-	double end_p1[3] = {x2, y2, z2};
-	double end_p2[3] = {x2_, y2_, z2_};	
-	angle_3D_between_ep_em = compute_angle(start_p1, end_p1, start_p2, end_p2);
+	double dot_product = (x2 - x1) * (x2_ - x1_) + (y2 - y1) * (y2_ - y1_);
+	double norm_v1 = sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2));
+	double norm_v2 = sqrt(pow(x2_ - x1_, 2) + pow(y2_ - y1_, 2));
+	//we want the 2d angle
+	angle_2D_between_ep_em = (180.0/M_PI)*acos(dot_product/(norm_v1*norm_v2));
+	
+	angle_3D_between_ep_em = (180.0/M_PI)*acos(((x2-x1)*(x2_-x1_)+(y2-y1)*(y2_-y1_)+(z2-z1)*(z2_-z1_))/(sqrt(pow((x2-x1),2)+pow((y2-y1),2)+pow((z2-z1),2)) * sqrt(pow((x2_-x1_),2)+pow((y2_-y1_),2)+pow((z2_-z1_),2))));
 	diff_time_elec = time_elec[indices_calo_final.at(0)]-time_elec[indices_calo_final.at(1)];
-
 	
 	//electron crossing or pair creation ??
 	double new_c = 299.792458;//change c unit to mm/ns
@@ -770,6 +577,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	t2_th = t_2;
 	track_lenght.push_back(track_length_1);
 	track_lenght.push_back(track_length_2);
+	
 	// if(internal_theoretical_time_diff<-2){
 	// cout<<"entry "<<event_number<<endl;
 	// cout<<"t1 th = "<<t_1<<" t2 th "<< t_2<< " diff time elec "<<diff_time_elec<<endl;
@@ -781,7 +589,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	// }
 	
 
-      
+	  
         for(int time_gamma_value=0; time_gamma_value<time_gamma.size();time_gamma_value++){
           time_gamma_after.push_back(time_gamma.at(time_gamma_value)-*std::max_element(time_elec.begin(),time_elec.end()));
           time_gamma_before.push_back(time_gamma.at(time_gamma_value)-*std::min_element(time_elec.begin(),time_elec.end()));
