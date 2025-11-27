@@ -4,7 +4,8 @@
 #include <falaise/snemo/datamodels/tracker_trajectory_data.h>
 #include <falaise/snemo/datamodels/tracker_clustering_data.h>
 #include <falaise/snemo/datamodels/tracker_cluster.h>
-#include <falaise/snemo/datamodels/geomid_utils.h>  
+#include <falaise/snemo/datamodels/geomid_utils.h>
+#include <falaise/snemo/datamodels/event_header.h>
 #include <bayeux/mctools/base_step_hit.h>
 #include <bayeux/mctools/simulated_data.h>
 #include "TFile.h"
@@ -19,6 +20,7 @@
 #include <fstream>
 #include <iterator>
 #include <cmath>
+#include "TParameter.h"
 
 using namespace std;
 
@@ -39,19 +41,21 @@ public:
 			   dpp::module_handle_dict_type &);
 
   double compute_ellipse(double y_vertex, double z_vertex, int& source_num) const;
+  double extract_unix_start_time(int run_number) const;
+
   // Event processing function
   dpp::chain_module::process_status process (datatools::things & event);
   
 private:
   int event_number;
   int  ptd_event_counter;
-  int cellules_non_associated, cellules_SD_non_associated, number_of_kinks;
-  bool ptd_details, has_an_electron_and_positron, has_SD_electron_and_positron, has_SD_two_electrons, opposite_side_e_gamma, same_side_elec, same_cluster_elec, has_a_same, ttd_details, sd_calo_details, sd_tracker_details, hit_the_same_calo_hit;
+  int cellules_non_associated, cellules_SD_non_associated, number_of_kinks, run_number;
+  bool ptd_details, has_an_electron_and_positron, has_SD_electron_and_positron, has_SD_two_electrons, opposite_side_e_gamma, same_side_elec, same_cluster_elec, has_a_same, ttd_details, sd_calo_details, sd_tracker_details, hit_the_same_calo_hit, two_elec_more_350_keV;
 
-  double diff_time_elec, angle_3D_between_ep_em, delta_y_elec, delta_z_elec, energy_elec_sum, corrected_energy_elec_sum, time_of_flight_gamma, internal_theoretical_time_diff, external_theoretical_time_diff,t1_th, t2_th, start_run_time, end_run_time, delta_r_calo, kink_angle, one_kink_x, one_kink_y, one_kink_z, total_volume;
+  double diff_time_elec, angle_3D_between_ep_em, delta_y_elec, delta_z_elec, energy_elec_sum, corrected_energy_elec_sum, time_of_flight_gamma, internal_theoretical_time_diff, external_theoretical_time_diff,t1_th, t2_th, start_run_time, end_run_time, delta_r_calo, kink_angle, one_kink_x, one_kink_y, one_kink_z, total_volume, unix_start_time=0, first_time, last_time, closest_gamma;
   int nb_gamma, nb_elec_ptd_per_event,nb_elec_SD_per_event, nb_wire_hit;
   vector<string>  type_elec, g4_process, material, vertex_type, g4_material;
-  vector<int> gamma_type, num_om, num_om_elec, track_number, num_gg;
+  vector<int> gamma_type, num_om, num_om_elec, track_number, num_gg, num_om_elec_f;
   vector<double> time_gamma, time_gamma_before, time_gamma_after, angle_SD, volume, total_step_length;
   vector<double> energy_gamma, energy_elec, corrected_energy_elec, time_elec,track_lenght, energy_gamma_after, vertex_SD_x, vertex_SD_y, vertex_SD_z, ellipse_source;
   vector<double> vertex_3D_start_x, vertex_3D_start_y, vertex_3D_start_z,vertex_3D_end_x, vertex_3D_end_y, vertex_3D_end_z, vertex_gamma, kink_x, kink_y, kink_z;
@@ -101,7 +105,8 @@ DPP_MODULE_REGISTRATION_IMPLEMENT(falaise_skeleton_module_ptd, "FalaiseSkeletonM
 falaise_skeleton_module_ptd::falaise_skeleton_module_ptd()
 {
   save_file = new TFile("extracted_data.root", "RECREATE");
-  tree = new TTree("Event", "Event information");  
+  tree = new TTree("Event", "Event information");
+  tree->Branch("run_number", &run_number);
   tree->Branch("event_number", &event_number);
   tree->Branch("has_SD_electron_and_positron", &has_SD_electron_and_positron);
   tree->Branch("has_SD_two_electrons", &has_SD_two_electrons);
@@ -142,6 +147,7 @@ falaise_skeleton_module_ptd::falaise_skeleton_module_ptd()
   tree->Branch("num_om", &num_om);
   tree->Branch("num_gg", &num_gg);
   tree->Branch("num_om_elec", &num_om_elec);
+  tree->Branch("num_om_elec_f", &num_om_elec_f);
   tree->Branch("corrected_energy_elec", &corrected_energy_elec);
   tree->Branch("time_elec", &time_elec);
   tree->Branch("side_elec", &side_elec);
@@ -172,6 +178,9 @@ falaise_skeleton_module_ptd::falaise_skeleton_module_ptd()
   tree->Branch("kink_z",&kink_z);
   tree->Branch("kink_angle",&kink_angle);
   tree->Branch("ellipse_source", &ellipse_source);
+  tree->Branch("unix_start_time", &unix_start_time);
+  tree->Branch("closest_gamma", &closest_gamma);
+  tree->Branch("two_elec_more_350_keV", &two_elec_more_350_keV);
 
     
 }
@@ -179,7 +188,10 @@ falaise_skeleton_module_ptd::falaise_skeleton_module_ptd()
 
 falaise_skeleton_module_ptd::~falaise_skeleton_module_ptd()
 {
+  double time = last_time - first_time;
   save_file->cd();
+  TParameter<double> param("run_time", time);
+  param.Write();
   tree->Write();
   save_file->Close();
   delete save_file;
@@ -191,7 +203,10 @@ void falaise_skeleton_module_ptd::initialize (const datatools::properties & modu
 {
   std::cout << "falaise_skeleton_module_ptd::initialize() called" << std::endl;
   event_number=0;
+  first_time=0;
+  last_time=0;
 
+  
   if ( module_properties.has_key("ptd_details"))
     ptd_details = module_properties.fetch_boolean("ptd_details");
   else ptd_details = false;
@@ -209,6 +224,54 @@ void falaise_skeleton_module_ptd::initialize (const datatools::properties & modu
   else sd_tracker_details = false;
 
   this->_set_initialized(true);
+}
+
+double snemo_run_time (int run_number)
+{
+  const char *cbd_base_path = "/sps/nemo/snemo/snemo_data/raw_data/CBD";
+  std::vector<std::string> log_paths;
+  log_paths.push_back(Form("%s/run-%d/snemo_trigger_run-%d.log", cbd_base_path, run_number, run_number));
+  for (int crate=6; crate>=0; crate--)
+    log_paths.push_back(Form("%s/run-%d/snemo_crate-%d_run-%d.log", cbd_base_path, run_number, crate, run_number));
+  int unixtime;
+  int run_start=0;
+  for (const std::string & log_path : log_paths)
+    {
+      std::ifstream log_file (log_path);
+      if (!log_file.is_open()) continue;
+      std::string log_line;
+      while (getline(log_file, log_line))
+        {
+          size_t unixtime_index = log_line.find("run.run_unixtime_ms=");
+          if (unixtime_index == std::string::npos)
+            continue;
+          unixtime = std::stoi(log_line.substr(20));
+          if (unixtime > run_start)
+            run_start = unixtime;
+            }
+    }
+  return unixtime;
+}
+
+
+
+double end_trip_time(int run_number) {
+  string filename;
+  if(run_number<1799){
+    filename = "/sps/nemo/snemo/snemo_data/reco_data/UDD_betabeta_v1.list";
+  }
+  else{
+    filename = "/sps/nemo/snemo/snemo_data/reco_data/UDD_betabeta_v2.list";
+  }
+    std::ifstream file(filename);
+    std::string line;
+    while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        int run; double start,dur,stop; std::string comment;
+        if (!(iss >> run >> start >> dur >> stop >> comment)) continue;
+        if (run == run_number) return static_cast<int>(stop);
+    }
+    return -1; // run non trouvé
 }
 
 
@@ -291,6 +354,22 @@ double falaise_skeleton_module_ptd::compute_ellipse(double y_vertex, double z_ve
 }
 
 
+double falaise_skeleton_module_ptd::extract_unix_start_time(int run_number) const
+{
+    std::string cmd = "grep ^" + std::to_string(run_number) + " /sps/nemo/scratch/chauveau/commissioning/software/run-sync-time.txt | awk '{print $2}'";
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) {
+        std::cerr << "Erreur: impossible d'exécuter grep\n";
+        return -1;
+    }
+
+    double timestamp = -1;
+    fscanf(pipe, "%lf", &timestamp);
+    pclose(pipe);
+    return timestamp;
+}
+
+
 
 dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatools::things & event)
 {
@@ -325,6 +404,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
   num_om.clear();
   num_gg.clear();
   num_om_elec.clear();
+  num_om_elec_f.clear();
   corrected_energy_elec.clear();
   time_elec.clear();
   track_lenght.clear();
@@ -377,7 +457,10 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
   one_kink_z=0.0;
   number_of_kinks=0;
   hit_the_same_calo_hit=false;
+  two_elec_more_350_keV=false;
   ellipse_source.clear();
+  run_number=0;
+  closest_gamma=1e6;
   //SD extraction
   if (event.has("SD")){
     const mctools::simulated_data & SD = event.get<mctools::simulated_data>("SD");
@@ -611,7 +694,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
       }
     }
   }
-  
+
   
 
   
@@ -619,6 +702,28 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
   // PTD extraction
   if (ptd_details)    
     {
+      const snemo::datamodel::event_header & eh = event.get<snemo::datamodel::event_header>("EH");
+      run_number = eh.get_id().get_run_number();
+      if(eh.has_timestamp()){
+	double time = (eh.get_timestamp().get_seconds()+eh.get_timestamp().get_picoseconds()/1E12)*1e-9;
+	if(time>end_trip_time(run_number) && end_trip_time(run_number)!=0) {
+	  return dpp::base_module::PROCESS_SUCCESS;
+	}
+        last_time = time;
+        if(first_time==0){
+          first_time = time;
+        }
+      }
+      if(unix_start_time==0){
+	if(run_number<1556){
+          unix_start_time = snemo_run_time(run_number);
+        }
+        else{
+          unix_start_time=extract_unix_start_time(run_number);
+        }
+      }
+
+      
       const snemo::datamodel::tracker_trajectory_data & TTD = event.get<snemo::datamodel::tracker_trajectory_data>("TTD");
       //if(TTD.get_solution_id()==0){
       const snemo::datamodel::tracker_trajectory_solution & ttd_solution = TTD.get_default_solution();
@@ -651,7 +756,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	  energy_gamma.push_back(it_hit->get_energy());
 	  gamma_type.push_back(it_hit->get_geom_id().get(0));
 	  vertex_gamma.push_back(it_hit->get_geom_id().get(1));
-	  time_gamma.push_back(it_hit->get_time());
+	  time_gamma.push_back(it_hit->get_time()/ CLHEP::ns);
 	  nb_gamma++;
 	  num_om.push_back(snemo::datamodel::om_num(it_hit->get_geom_id()));
 	}
@@ -692,13 +797,20 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	    double x_calo, y_calo, z_calo, x_foil, y_foil, z_foil;	  
 	      
 	    for(const datatools::handle<snemo::datamodel::vertex> & vertex : particle->get_vertices()){
-	      if(/*vertex->is_on_reference_source_plane() ||*/ vertex->is_on_source_foil()){
-		x_foil = vertex->get_spot().get_position().getX();
+	       if(vertex->is_on_reference_source_plane()){
+                x_foil = vertex->get_spot().get_position().getX();
 		y_foil = vertex->get_spot().get_position().getY();
-		z_foil = vertex->get_spot().get_position().getZ();
-		vertex_close_to_the_source=1;
-	      }
-	      if(vertex->is_on_main_calorimeter() /*|| vertex->is_on_x_calorimeter()*/ && particle->get_associated_calorimeter_hits().size()==1) //we forced MW only analysis
+                z_foil = vertex->get_spot().get_position().getZ();
+                vertex_close_to_the_source=1;
+              }
+	       else if(vertex->is_on_source_foil() && vertex_close_to_the_source==0){
+		 x_foil = vertex->get_spot().get_position().getX();
+                y_foil = vertex->get_spot().get_position().getY();
+                z_foil = vertex->get_spot().get_position().getZ();
+                vertex_close_to_the_source=1;
+              }
+
+	       else if(vertex->is_on_main_calorimeter() /*|| vertex->is_on_x_calorimeter()*/ && particle->get_associated_calorimeter_hits().size()==1) //we forced MW only analysis
 		{
 		  // if(vertex->is_on_main_calorimeter())
 		  //   {
@@ -771,7 +883,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	      }
 	      calo_num.push_back(snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id()));
 	      energy_elec.push_back(calorimeter_hits[0]->get_energy());
-	      time_elec.push_back(calorimeter_hits[0]->get_time());
+	      time_elec.push_back(calorimeter_hits[0]->get_time()/ CLHEP::ns);
 	      side_elec.push_back(calorimeter_hits[0]->get_geom_id().get(1));
 	      num_om_elec.push_back(snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id()));
 	      num_om.push_back(snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id()));
@@ -801,18 +913,45 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	    cellules_non_associated++;
 	  }
 	}//end loop on particle
+    
       
-      for (size_t i=0; i<cluster_id.size(); i++) {
-	for (size_t j=i+1; j<cluster_id.size(); j++) {
-          if(cluster_id[i]==cluster_id[j]){
-            same_clusters.push_back({cluster_id[i],cluster_id[j]});
-            count_equal_clusters++;
-            has_a_same=1;
+      //check number if electrons clusters are the same                                      
+      const snemo::datamodel::tracker_clustering_data & TCD = event.get<snemo::datamodel::tracker_clustering_data>("TCD");
+      for (const auto &tcd_solution : TCD.solutions()) {
+	const auto &tcd_clusters = tcd_solution->get_clusters();
+        nb_clusters = tcd_clusters.size();
+        for (size_t i : cluster_id) {
+          const auto &tcd_cluster = tcd_clusters[i];
+          for (size_t j : cluster_id){
+            if(j<=i){continue;}
+            const auto &tcd_cluster_same = tcd_clusters[j];
+            if (tcd_cluster->hits() == tcd_cluster_same->hits()) { //same size clusters                
+	      bool is_equal = true;
+              const auto &hits = tcd_cluster->hits();
+              const auto &hits_same = tcd_cluster_same->hits();
+              auto hit_it = hits.begin();
+              auto hit_same_it = hits_same.begin();
+              while (hit_it != hits.end() && hit_same_it != hits_same.end() && is_equal) {
+		if ((*hit_it)->get_id() != (*hit_same_it)->get_id()) {
+                  is_equal = false;
+                  break;
+		}
+                ++hit_it;
+                ++hit_same_it;
+              }
+              if (is_equal) {
+                count_equal_clusters++;
+                const int id_cluster = tcd_cluster->get_cluster_id();
+                const int id_cluster_same = tcd_cluster_same->get_cluster_id();
+                same_clusters.push_back({id_cluster,id_cluster_same});
+                has_a_same=1;
+              }
+            }
           }
         }
       }
 
-      vector<int> indices_calo_final;
+       vector<int> indices_calo_final;
       vector<int> tot_same;
       for(int i=0; i< same_clusters.size(); i++){
         for(int j=0; j< same_clusters[i].size(); j++){
@@ -820,12 +959,11 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
         }
       }
 
-      for(int j=0; j<cluster_id.size(); j++){
-        if(std::find(tot_same.begin(), tot_same.end(), cluster_id[j]) == tot_same.end()){
-          indices_calo_final.push_back(j);
+        for(int j=0; j<cluster_id.size(); j++){
+          if(std::find(tot_same.begin(), tot_same.end(), cluster_id[j]) == tot_same.end()){
+            indices_calo_final.push_back(j);
+          }
         }
-      }
-
 
       
 
@@ -844,7 +982,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
                 if(k==j){continue;}
                 double min_temp_y = abs(vertex_3D_start_y[j]-vertex_3D_start_y[k]);
                 double min_temp_z = abs(vertex_3D_start_z[j]-vertex_3D_start_z[k]);
-                if(min_y_final+min_z_final>min_temp_y+min_temp_z){
+                if((pow(min_y_final,2)+pow(min_z_final,2))>(pow(min_temp_y,2)+pow(min_temp_z,2))){
                   min_y_final=min_temp_y;
                   min_z_final = min_temp_z;
                   j_final = j;
@@ -869,7 +1007,12 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
       }
       if(indices_calo_final.size()==2 /*&& num_om[indices_calo_final.at(0)]!=num_om[indices_calo_final.at(1)]*/){//final search
 	//cout<<"event number "<<event_number<<endl;
+	num_om_elec_f.push_back(num_om_elec[indices_calo_final.at(0)]);
+	num_om_elec_f.push_back(num_om_elec[indices_calo_final.at(1)]);
 	if(nb_clusters-count_equal_clusters!=2){
+	  cellules_non_associated++;
+	}
+	if(energy_elec[indices_calo_final.at(0)]==0 || energy_elec[indices_calo_final.at(1)] == 0){
 	  cellules_non_associated++;
 	}
 	//cout<<"taille indice finale : "<<indices_calo_final.size()<<"entrie  = "<<event_number<<endl;
@@ -886,6 +1029,10 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	}
 	delta_r_calo=sqrt(pow(vertex_3D_end_y[indices_calo_final.at(0)]-vertex_3D_end_y[indices_calo_final.at(1)],2)+pow(vertex_3D_end_z[indices_calo_final.at(0)]-vertex_3D_end_z[indices_calo_final.at(1)],2));
 	energy_elec_sum=energy_elec[indices_calo_final.at(0)]+energy_elec[indices_calo_final.at(1)];
+	if(energy_elec[indices_calo_final.at(0)]>0.350 && energy_elec[indices_calo_final.at(1)]>0.350){
+          two_elec_more_350_keV = true;
+        }
+
 	if(corrected_energy_elec.size()>0){
 	  corrected_energy_elec_sum = corrected_energy_elec[indices_calo_final.at(0)]+corrected_energy_elec[indices_calo_final.at(1)];
 	}
@@ -950,9 +1097,10 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	// cout<<endl;
 	// }
 	
-
       
 	for(int time_gamma_value=0; time_gamma_value<time_gamma.size();time_gamma_value++){
+	  if(energy_gamma.at(time_gamma_value)<0.350) continue; //threshold on gammas
+	  
 	  time_gamma_after.push_back(time_gamma.at(time_gamma_value)-*std::max_element(time_elec.begin(),time_elec.end()));
 	  time_gamma_before.push_back(time_gamma.at(time_gamma_value)-*std::min_element(time_elec.begin(),time_elec.end()));
 	  energy_gamma_after.push_back(energy_gamma.at(time_gamma_value));
@@ -971,10 +1119,19 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	      opposite_side_e_gamma = 1;
 	    }
 	  }
-	}
+	}//end gamma loop
+	for (size_t i = 0; i < time_gamma_after.size(); i++) {
+	  double abs_after = std::abs(time_gamma_after[i]);
+	  double abs_before = std::abs(time_gamma_before[i]);
+
+	  if (abs_after < std::abs(closest_gamma)) closest_gamma = time_gamma_after[i];
+	  if (abs_before < std::abs(closest_gamma)) closest_gamma = time_gamma_before[i];
+	} 
+	
       }
-      
-      tree->Fill();
+      if(indices_calo_final.size()==2){
+	tree->Fill();
+      }
       event_number++;      
     }
   return dpp::base_module::PROCESS_SUCCESS;
