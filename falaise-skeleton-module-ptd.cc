@@ -49,15 +49,15 @@ public:
 private:
   int event_number;
   int  ptd_event_counter;
-  int cellules_non_associated, cellules_SD_non_associated, number_of_kinks, run_number;
+  int cellules_non_associated, cellules_SD_non_associated, number_of_kinks, run_number, nb_elec_real;
   bool ptd_details, has_an_electron_and_positron, has_SD_electron_and_positron, has_SD_two_electrons, opposite_side_e_gamma, same_side_elec, same_cluster_elec, has_a_same, ttd_details, sd_calo_details, sd_tracker_details, hit_the_same_calo_hit, two_elec_more_350_keV;
 
-  double diff_time_elec, angle_3D_between_ep_em, delta_y_elec, delta_z_elec, energy_elec_sum, corrected_energy_elec_sum, time_of_flight_gamma, internal_theoretical_time_diff, external_theoretical_time_diff,t1_th, t2_th, start_run_time, end_run_time, delta_r_calo, kink_angle, one_kink_x, one_kink_y, one_kink_z, total_volume, unix_start_time=0, first_time, last_time, closest_gamma;
+  double diff_time_elec, angle_3D_between_ep_em, delta_y_elec, delta_z_elec, energy_elec_sum, corrected_energy_elec_sum, time_of_flight_gamma, internal_theoretical_time_diff, external_theoretical_time_diff,t1_th, t2_th, start_run_time, end_run_time, delta_r_calo, kink_angle, one_kink_x, one_kink_y, one_kink_z, total_volume, unix_start_time=0, first_time, last_time, closest_gamma, closest_elec;
   int nb_gamma, nb_elec_ptd_per_event,nb_elec_SD_per_event, nb_wire_hit;
   vector<string>  type_elec, g4_process, material, vertex_type, g4_material;
   vector<int> gamma_type, num_om, num_om_elec, track_number, num_gg, num_om_elec_f;
   vector<double> time_gamma, time_gamma_before, time_gamma_after, angle_SD, volume, total_step_length;
-  vector<double> energy_gamma, energy_elec, corrected_energy_elec, time_elec,track_lenght, energy_gamma_after, vertex_SD_x, vertex_SD_y, vertex_SD_z, ellipse_source;
+  vector<double> energy_gamma, energy_elec, corrected_energy_elec, time_elec, time_elec_alone,track_lenght, energy_gamma_after, vertex_SD_x, vertex_SD_y, vertex_SD_z, ellipse_source;
   vector<double> vertex_3D_start_x, vertex_3D_start_y, vertex_3D_start_z,vertex_3D_end_x, vertex_3D_end_y, vertex_3D_end_z, vertex_gamma, kink_x, kink_y, kink_z;
   vector<int> side_elec, cluster_elec_num, calo_num;
   TFile *save_file;
@@ -143,6 +143,7 @@ falaise_skeleton_module_ptd::falaise_skeleton_module_ptd()
   tree->Branch("vertex_3D_end_z", &vertex_3D_end_z);
   tree->Branch("delta_r_calo", &delta_r_calo);
   tree->Branch("nb_elec_ptd_per_event", &nb_elec_ptd_per_event);
+  tree->Branch("nb_elec_real", &nb_elec_real);
   tree->Branch("energy_elec", &energy_elec);
   tree->Branch("num_om", &num_om);
   tree->Branch("num_gg", &num_gg);
@@ -180,6 +181,7 @@ falaise_skeleton_module_ptd::falaise_skeleton_module_ptd()
   tree->Branch("ellipse_source", &ellipse_source);
   tree->Branch("unix_start_time", &unix_start_time);
   tree->Branch("closest_gamma", &closest_gamma);
+  tree->Branch("closest_elec", &closest_elec);
   tree->Branch("two_elec_more_350_keV", &two_elec_more_350_keV);
 
     
@@ -388,6 +390,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
   nb_wire_hit=0;
   vertex_gamma.clear();
   nb_elec_ptd_per_event=0;
+  nb_elec_real = 0;
   nb_elec_SD_per_event=0;
   cellules_non_associated=0;
   cellules_SD_non_associated=0;
@@ -407,6 +410,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
   num_om_elec_f.clear();
   corrected_energy_elec.clear();
   time_elec.clear();
+  time_elec_alone.clear();
   track_lenght.clear();
   energy_gamma.clear();
   vertex_3D_start_x.clear();
@@ -461,6 +465,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
   ellipse_source.clear();
   run_number=0;
   closest_gamma=1e6;
+  closest_elec=1e6;
   //SD extraction
   if (event.has("SD")){
     const mctools::simulated_data & SD = event.get<mctools::simulated_data>("SD");
@@ -848,7 +853,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	      else if(nb_kinks_elec>1){
 		kink_angle=100;
 	      }
-	      
+	    
 	      vertex_3D_start_x.push_back(x_foil);
 	      vertex_3D_start_y.push_back(y_foil);
 	      vertex_3D_start_z.push_back(z_foil);
@@ -884,6 +889,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	      calo_num.push_back(snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id()));
 	      energy_elec.push_back(calorimeter_hits[0]->get_energy());
 	      time_elec.push_back(calorimeter_hits[0]->get_time()/ CLHEP::ns);
+	      time_elec_alone.push_back(calorimeter_hits[0]->get_time()/ CLHEP::ns);
 	      side_elec.push_back(calorimeter_hits[0]->get_geom_id().get(1));
 	      num_om_elec.push_back(snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id()));
 	      num_om.push_back(snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id()));
@@ -902,7 +908,14 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	      }
 	      //cluster_elec_num.push_back(particle.get_trajectory().get_cluster.get_hit_id());
 	      //get from inheritance of the class geomtools::base_hit
-	      //nb_elec_ptd_per_event++;
+	      nb_elec_ptd_per_event++;
+	    }
+	    else if (vertex_associated_to_a_calo && vertex_close_to_the_source==0){
+	      const auto& calorimeter_hits = particle->get_associated_calorimeter_hits();	
+              time_elec.push_back(calorimeter_hits[0]->get_time()/ CLHEP::ns);
+	      vertex_3D_start_x.push_back(10000);
+              vertex_3D_start_y.push_back(10000);
+              vertex_3D_start_z.push_back(10000);
 	    }
 	    else{
 	      cellules_non_associated++;	      
@@ -951,14 +964,15 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
         }
       }
 
-       vector<int> indices_calo_final;
+      //we put particles sharing the same cluster in one vector
+      vector<int> indices_calo_final;
       vector<int> tot_same;
       for(int i=0; i< same_clusters.size(); i++){
         for(int j=0; j< same_clusters[i].size(); j++){
           tot_same.push_back(same_clusters[i][j]);
         }
       }
-
+      //we put lonely particle in another vector
         for(int j=0; j<cluster_id.size(); j++){
           if(std::find(tot_same.begin(), tot_same.end(), cluster_id[j]) == tot_same.end()){
             indices_calo_final.push_back(j);
@@ -966,15 +980,13 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
         }
 
       
-
-
-
+	//we are computing the closest track from one ambiguity
       if(count_equal_clusters!=0){
-        int j_final=0;
-        for(int i=0; i<same_clusters.size(); i++){// we do the operation for every same clusters    
+        for(int i=0; i<same_clusters.size(); i++){// we do the operation for every same clusters
+	  int j_final=-1;
           bool cluster_found=false;
           for(int j=0; j<cluster_id.size();j++){
-            if(same_clusters[i][0]==cluster_id[j] || same_clusters[i][1]==cluster_id[j]){ //we suppose one cluster can give only 2 solutions                                                                  
+            if(same_clusters[i][0]==cluster_id[j] || same_clusters[i][1]==cluster_id[j]){ //we suppose one cluster can give only 2 solutions                       
               cluster_found=true;
               double min_y_final = 1000;
               double min_z_final = 1000;
@@ -991,27 +1003,97 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
             }
           }
           if(cluster_found==true){
-            indices_calo_final.push_back(j_final);
+            indices_calo_final.push_back(j_final);//we extract one track from the ambiguity
           }
         }
       }
-      nb_clusters = cluster_id.size();
-      nb_elec_ptd_per_event=indices_calo_final.size();
 
       
-      if(nb_elec_ptd_per_event==2){	
-	if(num_om_elec[indices_calo_final.at(0)]==num_om_elec[indices_calo_final.at(1)]){
-	  hit_the_same_calo_hit=true;
-	  //cout<<"event number "<<event_number<<endl;
+      if (indices_calo_final.size() < 2) {
+	event_number++;      
+	return dpp::base_module::PROCESS_SUCCESS;//we stop the search if we have less than 2 tracks
+      }
+      
+      //compute the closest vertices in tracks selected
+      double best_dist2 = std::numeric_limits<double>::max();
+      int best_a = -1;
+      int best_b = -1;
+      // test all pairs of selected tracks
+      for (int ia = 0; ia < indices_calo_final.size(); ++ia) {
+	for (int ib = ia+1; ib < indices_calo_final.size(); ++ib) {	  
+	  int a = indices_calo_final[ia];
+	  int b = indices_calo_final[ib];
+	  double dy = vertex_3D_start_y[a] - vertex_3D_start_y[b];
+	  double dz = vertex_3D_start_z[a] - vertex_3D_start_z[b];
+	  double dist2 = dy*dy + dz*dz;
+	  if (dist2 < best_dist2) {
+	    best_dist2 = dist2;
+	    best_a = a;
+	    best_b = b;
+	  }
 	}
       }
+
+      //loop again here to found other best_dist
+      
+      // keep only the closest 2 tracks
+      indices_calo_final.clear();
+      indices_calo_final.push_back(best_a);
+      indices_calo_final.push_back(best_b);
+      
+      double min_dt = std::numeric_limits<double>::max();
+      double tA = time_elec_alone[best_a];
+      double tB = time_elec_alone[best_b];
+
+      
+      // Loop on calo hits
+      if(nb_elec_ptd_per_event - count_equal_clusters>2){ 
+	for (size_t idx = 0; idx < cluster_id.size(); ++idx) {
+	  // we avoid to compare same cluster ambiguity
+	  if (idx == static_cast<size_t>(best_a) || idx == static_cast<size_t>(best_b)) continue;
+	  bool same_ambiguity = false;
+	  for (const auto& cluster_pair : same_clusters) {
+	    if ((cluster_pair[0] == cluster_id[best_a] && cluster_pair[1] == cluster_id[idx]) ||
+		(cluster_pair[1] == cluster_id[best_a] && cluster_pair[0] == cluster_id[idx]) ||
+		(cluster_pair[0] == cluster_id[best_b] && cluster_pair[1] == cluster_id[idx]) ||
+		(cluster_pair[1] == cluster_id[best_b] && cluster_pair[0] == cluster_id[idx])) {
+	      same_ambiguity = true;
+	      break;
+	    }
+	  }
+	  if (same_ambiguity){
+	    min_dt = std::numeric_limits<double>::max();
+	    continue;
+	  }
+	  //compute delta_t 
+	  double dtA = std::abs(time_elec[idx] - tA);
+	  double dtB = std::abs(time_elec[idx] - tB);
+	  double dt_min_pair = std::min(dtA, dtB);
+	  if (dt_min_pair < min_dt && min_dt!=0) {
+	    min_dt = dt_min_pair;
+	  }
+	}
+      }
+      else{
+	min_dt = std::numeric_limits<double>::max();
+      }
+      // if(nb_elec_ptd_per_event - count_equal_clusters>2){
+      // 	cout<<"event = "<<event_number<<" min = "<<min_dt<<endl;
+      // }
+      // si toutes les autres traces appartiennent à la même ambiguïté, min_dt reste maximal
+      closest_elec = min_dt;
+      nb_elec_real = nb_elec_ptd_per_event - count_equal_clusters;
+      nb_elec_ptd_per_event=indices_calo_final.size();
       if(indices_calo_final.size()==2 /*&& num_om[indices_calo_final.at(0)]!=num_om[indices_calo_final.at(1)]*/){//final search
 	//cout<<"event number "<<event_number<<endl;
 	num_om_elec_f.push_back(num_om_elec[indices_calo_final.at(0)]);
 	num_om_elec_f.push_back(num_om_elec[indices_calo_final.at(1)]);
-	if(nb_clusters-count_equal_clusters!=2){
-	  cellules_non_associated++;
+	if(num_om_elec[indices_calo_final.at(0)]==num_om_elec[indices_calo_final.at(1)]){
+	  hit_the_same_calo_hit=true;
 	}
+	// if(nb_clusters-count_equal_clusters!=2){
+	//   cellules_non_associated++;
+	// }
 	if(energy_elec[indices_calo_final.at(0)]==0 || energy_elec[indices_calo_final.at(1)] == 0){
 	  cellules_non_associated++;
 	}
