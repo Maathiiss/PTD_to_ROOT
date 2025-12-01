@@ -52,13 +52,13 @@ private:
   int cellules_non_associated, cellules_SD_non_associated, number_of_kinks, run_number, nb_elec_real;
   bool ptd_details, has_an_electron_and_positron, has_SD_electron_and_positron, has_SD_two_electrons, opposite_side_e_gamma, same_side_elec, same_cluster_elec, has_a_same, ttd_details, sd_calo_details, sd_tracker_details, hit_the_same_calo_hit, two_elec_more_350_keV;
 
-  double diff_time_elec, angle_3D_between_ep_em, delta_y_elec, delta_z_elec, energy_elec_sum, corrected_energy_elec_sum, time_of_flight_gamma, internal_theoretical_time_diff, external_theoretical_time_diff,t1_th, t2_th, start_run_time, end_run_time, delta_r_calo, kink_angle, one_kink_x, one_kink_y, one_kink_z, total_volume, unix_start_time=0, first_time, last_time, closest_gamma, closest_elec;
+  double diff_time_elec, angle_3D_between_ep_em, delta_y_elec, delta_z_elec, energy_elec_sum, corrected_energy_elec_sum, time_of_flight_gamma, internal_theoretical_time_diff, external_theoretical_time_diff,t1_th, t2_th, start_run_time, end_run_time, delta_r_calo, kink_angle, one_kink_x, one_kink_y, one_kink_z, total_volume, unix_start_time=0, first_time, last_time, closest_gamma, closest_elec, closest_alpha, alpha_elec_time_diff;
   int nb_gamma, nb_elec_ptd_per_event,nb_elec_SD_per_event, nb_wire_hit;
   vector<string>  type_elec, g4_process, material, vertex_type, g4_material;
-  vector<int> gamma_type, num_om, num_om_elec, track_number, num_gg, num_om_elec_f;
+  vector<int> gamma_type, num_om, num_om_elec, track_number, num_gg, num_om_elec_f, num_om_gamma, num_om_track;
   vector<double> time_gamma, time_gamma_before, time_gamma_after, angle_SD, volume, total_step_length;
-  vector<double> energy_gamma, energy_elec, corrected_energy_elec, time_elec, time_elec_alone,track_lenght, energy_gamma_after, vertex_SD_x, vertex_SD_y, vertex_SD_z, ellipse_source;
-  vector<double> vertex_3D_start_x, vertex_3D_start_y, vertex_3D_start_z,vertex_3D_end_x, vertex_3D_end_y, vertex_3D_end_z, vertex_gamma, kink_x, kink_y, kink_z;
+  vector<double> energy_gamma, energy_elec, corrected_energy_elec, time_elec, time_elec_alone,track_lenght, energy_gamma_after, vertex_SD_x, vertex_SD_y, vertex_SD_z, ellipse_source, time_track, energy_track;
+  vector<double> vertex_3D_start_x, vertex_3D_start_y, vertex_3D_start_z,vertex_3D_end_x, vertex_3D_end_y, vertex_3D_end_z, vertex_gamma, kink_x, kink_y, kink_z, vertex_3D_track_y, vertex_3D_track_z, mean_alpha_anodic_time;
   vector<int> side_elec, cluster_elec_num, calo_num;
   TFile *save_file;
   TTree *tree;
@@ -146,6 +146,7 @@ falaise_skeleton_module_ptd::falaise_skeleton_module_ptd()
   tree->Branch("nb_elec_real", &nb_elec_real);
   tree->Branch("energy_elec", &energy_elec);
   tree->Branch("num_om", &num_om);
+  tree->Branch("num_om_gamma", &num_om_gamma);
   tree->Branch("num_gg", &num_gg);
   tree->Branch("num_om_elec", &num_om_elec);
   tree->Branch("num_om_elec_f", &num_om_elec_f);
@@ -182,6 +183,8 @@ falaise_skeleton_module_ptd::falaise_skeleton_module_ptd()
   tree->Branch("unix_start_time", &unix_start_time);
   tree->Branch("closest_gamma", &closest_gamma);
   tree->Branch("closest_elec", &closest_elec);
+  tree->Branch("closest_alpha", &closest_alpha);
+  tree->Branch("alpha_elec_time_diff", &alpha_elec_time_diff);
   tree->Branch("two_elec_more_350_keV", &two_elec_more_350_keV);
 
     
@@ -207,12 +210,11 @@ void falaise_skeleton_module_ptd::initialize (const datatools::properties & modu
   event_number=0;
   first_time=0;
   last_time=0;
-
   
   if ( module_properties.has_key("ptd_details"))
     ptd_details = module_properties.fetch_boolean("ptd_details");
-  else ptd_details = false;
-
+  else ptd_details = false;  
+  
   if ( module_properties.has_key("ttd_details"))
     ttd_details = module_properties.fetch_boolean("ttd_details");
   else ttd_details = false;
@@ -382,7 +384,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
       return dpp::base_module::PROCESS_SUCCESS;
       event_number++;
     }
-
+  
   // Retrieve the PTD bank  
   const snemo::datamodel::particle_track_data & PTD = event.get<snemo::datamodel::particle_track_data>("PTD");
 
@@ -403,19 +405,26 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
   side_elec.clear();
   cluster_elec_num.clear();
   energy_elec.clear();
+  energy_track.clear();
   calo_num.clear();
   num_om.clear();
+  num_om_gamma.clear();
   num_gg.clear();
   num_om_elec.clear();
   num_om_elec_f.clear();
+  num_om_track.clear();
   corrected_energy_elec.clear();
   time_elec.clear();
   time_elec_alone.clear();
+  time_track.clear();
   track_lenght.clear();
   energy_gamma.clear();
+  mean_alpha_anodic_time.clear();
   vertex_3D_start_x.clear();
   vertex_3D_start_y.clear();
   vertex_3D_start_z.clear();
+  vertex_3D_track_y.clear();
+  vertex_3D_track_z.clear();
   vertex_3D_end_x.clear();
   vertex_3D_end_y.clear();
   vertex_3D_end_z.clear();
@@ -461,11 +470,11 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
   one_kink_z=0.0;
   number_of_kinks=0;
   hit_the_same_calo_hit=false;
-  two_elec_more_350_keV=false;
   ellipse_source.clear();
   run_number=0;
   closest_gamma=1e6;
   closest_elec=1e6;
+  closest_alpha = 1e6;
   //SD extraction
   if (event.has("SD")){
     const mctools::simulated_data & SD = event.get<mctools::simulated_data>("SD");
@@ -763,7 +772,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	  vertex_gamma.push_back(it_hit->get_geom_id().get(1));
 	  time_gamma.push_back(it_hit->get_time()/ CLHEP::ns);
 	  nb_gamma++;
-	  num_om.push_back(snemo::datamodel::om_num(it_hit->get_geom_id()));
+	  num_om_gamma.push_back(snemo::datamodel::om_num(it_hit->get_geom_id()));
 	}
       }
      
@@ -771,6 +780,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
       //vector<vector<double>> vertex_gamma_tot;
     
       vector<int> cluster_id;
+      vector<int> cluster_id_tot;
       for (const datatools::handle<snemo::datamodel::particle_track> & particle : PTD.particles())
 	{
 	  const auto& trajectory_pattern = particle->get_trajectory_handle()->get_pattern();
@@ -783,8 +793,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	      kink_y.push_back(trajectory_pattern.get_kink(i).getY());
 	      kink_z.push_back(trajectory_pattern.get_kink(i).getZ());
 	    }
-	  }
-	
+	  }       
 	  
 	  //particle->get_trajectory_handle()->get_pattern().get_first();
 	    
@@ -800,7 +809,6 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	    bool vertex_close_to_the_source = false;
 	    bool vertex_associated_to_a_calo = false;
 	    double x_calo, y_calo, z_calo, x_foil, y_foil, z_foil;	  
-	      
 	    for(const datatools::handle<snemo::datamodel::vertex> & vertex : particle->get_vertices()){
 	       if(vertex->is_on_reference_source_plane()){
                 x_foil = vertex->get_spot().get_position().getX();
@@ -832,10 +840,11 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 		}
 	    }
 	    int source_num;
-	    
+	  
 	    if(vertex_close_to_the_source && vertex_associated_to_a_calo){
+	      const auto& calorimeter_hits = particle->get_associated_calorimeter_hits();	     
+	      if(calorimeter_hits[0]->get_energy()<0.350) continue;
 	      ellipse_source.push_back(compute_ellipse(y_foil,z_foil,source_num));
-	      
 	      const auto& trajectory_pattern_elec = particle->get_trajectory_handle()->get_pattern();
 	      int nb_kinks_elec = trajectory_pattern_elec.number_of_kinks();
 	      if(nb_kinks_elec==1){
@@ -860,10 +869,11 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	      vertex_3D_end_x.push_back(x_calo);
 	      vertex_3D_end_y.push_back(y_calo);
 	      vertex_3D_end_z.push_back(z_calo);
+	      cluster_id_tot.push_back(particle->get_trajectory().get_cluster().get_hit_id());
 	      cluster_id.push_back(particle->get_trajectory().get_cluster().get_hit_id());
 	      //cout<<endl;
 	      //cout<<"event "<<event_number<<endl;
-	      const auto& calorimeter_hits = particle->get_associated_calorimeter_hits();
+	      //const auto& calorimeter_hits = particle->get_associated_calorimeter_hits();
 	      if(calorimeter_hits[0]->has_auxiliaries()){//you can take the index 0 because I verified that calorimeter_hits.size()==1
 		//cout<<"has auxiliaries "<<calorimeter_hits[0]->has_auxiliaries()<<endl;
 		const auto& aux = calorimeter_hits[0]->get_auxiliaries();
@@ -892,14 +902,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	      time_elec_alone.push_back(calorimeter_hits[0]->get_time()/ CLHEP::ns);
 	      side_elec.push_back(calorimeter_hits[0]->get_geom_id().get(1));
 	      num_om_elec.push_back(snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id()));
-	      num_om.push_back(snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id()));
-
-	      const auto gg = particle->get_trajectory_handle()->get_cluster().hits();
-	      for(const auto hits : gg){
-		num_gg.push_back(snemo::datamodel::gg_num(hits->get_geom_id()));
-	      }
-
-		
+	      num_om.push_back(snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id()));		
 	      if (particle->has_trajectory()) {
 		const auto& trajectory = particle->get_trajectory();
 		if (trajectory.has_cluster()) {
@@ -910,13 +913,31 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	      //get from inheritance of the class geomtools::base_hit
 	      nb_elec_ptd_per_event++;
 	    }
-	    else if (vertex_associated_to_a_calo && vertex_close_to_the_source==0){
-	      const auto& calorimeter_hits = particle->get_associated_calorimeter_hits();	
+	    else if (vertex_associated_to_a_calo && vertex_close_to_the_source==0){//calo search 
+	      //const auto& calorimeter_hits = particle->get_associated_calorimeter_hits();
+	      const auto& calorimeter_hits = particle->get_associated_calorimeter_hits();     
+	      if(calorimeter_hits[0]->get_energy()<0.350) continue;	     
+	      num_om.push_back(snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id()));
+	      num_om_track.push_back(snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id()));
               time_elec.push_back(calorimeter_hits[0]->get_time()/ CLHEP::ns);
-	      vertex_3D_start_x.push_back(10000);
-              vertex_3D_start_y.push_back(10000);
-              vertex_3D_start_z.push_back(10000);
+	      time_track.push_back(calorimeter_hits[0]->get_time()/ CLHEP::ns);
+	      energy_track.push_back(calorimeter_hits[0]->get_energy());
+	      cluster_id_tot.push_back(particle->get_trajectory().get_cluster().get_hit_id());
 	    }
+	    else if (vertex_associated_to_a_calo==0 && vertex_close_to_the_source){//alpha search
+	      vertex_3D_track_y.push_back(y_foil);
+	      vertex_3D_track_z.push_back(z_foil);
+	      const auto gg = particle->get_trajectory_handle()->get_cluster().hits();
+	      double sum = 0;
+	      int n = 0;	      
+	      for(const auto hits : gg){
+		sum += hits->get_anode_time() / CLHEP::ns;
+		n++;
+              }
+	      double mean = (n ? sum / n : 0);
+	      mean_alpha_anodic_time.push_back(mean);	      
+	    }
+	    
 	    else{
 	      cellules_non_associated++;	      
 	    }
@@ -1007,214 +1028,209 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
           }
         }
       }
-
-      
       if (indices_calo_final.size() < 2) {
 	event_number++;      
 	return dpp::base_module::PROCESS_SUCCESS;//we stop the search if we have less than 2 tracks
       }
-      
-      //compute the closest vertices in tracks selected
-      double best_dist2 = std::numeric_limits<double>::max();
-      int best_a = -1;
-      int best_b = -1;
-      // test all pairs of selected tracks
-      for (int ia = 0; ia < indices_calo_final.size(); ++ia) {
-	for (int ib = ia+1; ib < indices_calo_final.size(); ++ib) {	  
-	  int a = indices_calo_final[ia];
-	  int b = indices_calo_final[ib];
-	  double dy = vertex_3D_start_y[a] - vertex_3D_start_y[b];
-	  double dz = vertex_3D_start_z[a] - vertex_3D_start_z[b];
-	  double dist2 = dy*dy + dz*dz;
-	  if (dist2 < best_dist2) {
-	    best_dist2 = dist2;
-	    best_a = a;
-	    best_b = b;
-	  }
+      //remove the particles that are hitting the same OM - with e-
+      std::unordered_map<int, int> count;
+      for (int idx_elec : indices_calo_final) {
+	//if(energy_elec[idx_elec]<350) continue;
+	int om = num_om_elec[idx_elec];
+	count[om]++;
+      }
+      //remove the particles that are hitting the same OM - with little tracks
+      for (int om_track : num_om_track) {
+	//	if(energy_track[om_track]<350) continue;
+	count[om_track]++;
+      }
+      std::vector<int> new_vec;
+      for (int idx_elec : indices_calo_final) {
+	int om = num_om_elec[idx_elec];
+	if (count[om] == 1) {   
+	  new_vec.push_back(idx_elec);
 	}
       }
+      if (new_vec.size() < 2) {
+        event_number++;
+        return dpp::base_module::PROCESS_SUCCESS;//we stop the search if we have less than 2 electrons
+      }
+      nb_elec_real = new_vec.size();
+    
+      // now we associate tracks by pairs by computing the closest distance
+      std::vector<std::vector<int>> pairs; // this vector will contain all double beta candidates
+      std::vector<int> remaining = new_vec;
+      while (remaining.size() >= 2) {
+	double best_dist2 = std::numeric_limits<double>::max();
+	int best_i = -1;
+	int best_j = -1;
+	for (int i = 0; i < (int)remaining.size(); ++i) {
+	  for (int j = i + 1; j < (int)remaining.size(); ++j) {
+            int a = remaining[i];
+            int b = remaining[j];
+            double dy = vertex_3D_start_y[a] - vertex_3D_start_y[b];
+            double dz = vertex_3D_start_z[a] - vertex_3D_start_z[b];
+            double dist2 = dy * dy + dz * dz;
+            if (dist2 < best_dist2) {
+	      best_dist2 = dist2;
+	      best_i = i;
+	      best_j = j;
+            }
+	  }
+	}
+	// add the 2 tracks found
+	pairs.push_back({ remaining[best_i], remaining[best_j] });
+	if (best_i > best_j) {
+	  std::swap(best_i, best_j);
+	}
+	remaining.erase(remaining.begin() + best_j);
+	remaining.erase(remaining.begin() + best_i);//remove the 2 indexes from the vector
+      }
 
-      //loop again here to found other best_dist
-      
-      // keep only the closest 2 tracks
-      indices_calo_final.clear();
-      indices_calo_final.push_back(best_a);
-      indices_calo_final.push_back(best_b);
-      
-      double min_dt = std::numeric_limits<double>::max();
-      double tA = time_elec_alone[best_a];
-      double tB = time_elec_alone[best_b];
 
       
-      // Loop on calo hits
-      if(nb_elec_ptd_per_event - count_equal_clusters>2){ 
+      std::vector<double> min_dt_for_pair; 
+      min_dt_for_pair.resize(pairs.size(), 1e9);  
+      for (size_t p = 0; p < pairs.size(); ++p) {
+	int best_a = pairs[p][0];
+	int best_b = pairs[p][1];
+	double tA = time_elec_alone[best_a];
+	double tB = time_elec_alone[best_b];
+	double min_dt = 1e9;  // min dt for this pair
+	// --- 1. Compare with other electrons ---
 	for (size_t idx = 0; idx < cluster_id.size(); ++idx) {
-	  // we avoid to compare same cluster ambiguity
-	  if (idx == static_cast<size_t>(best_a) || idx == static_cast<size_t>(best_b)) continue;
+	  if (idx == (size_t)best_a || idx == (size_t)best_b) continue;
 	  bool same_ambiguity = false;
 	  for (const auto& cluster_pair : same_clusters) {
-	    if ((cluster_pair[0] == cluster_id[best_a] && cluster_pair[1] == cluster_id[idx]) ||
-		(cluster_pair[1] == cluster_id[best_a] && cluster_pair[0] == cluster_id[idx]) ||
-		(cluster_pair[0] == cluster_id[best_b] && cluster_pair[1] == cluster_id[idx]) ||
-		(cluster_pair[1] == cluster_id[best_b] && cluster_pair[0] == cluster_id[idx])) {
+            if ((cluster_pair[0] == cluster_id[best_a] && cluster_pair[1] == cluster_id[idx]) ||
+                (cluster_pair[1] == cluster_id[best_a] && cluster_pair[0] == cluster_id[idx]) ||
+                (cluster_pair[0] == cluster_id[best_b] && cluster_pair[1] == cluster_id[idx]) ||
+                (cluster_pair[1] == cluster_id[best_b] && cluster_pair[0] == cluster_id[idx])) {
 	      same_ambiguity = true;
 	      break;
-	    }
+            }
 	  }
-	  if (same_ambiguity){
-	    min_dt = std::numeric_limits<double>::max();
-	    continue;
-	  }
-	  //compute delta_t 
-	  double dtA = std::abs(time_elec[idx] - tA);
-	  double dtB = std::abs(time_elec[idx] - tB);
-	  double dt_min_pair = std::min(dtA, dtB);
-	  if (dt_min_pair < min_dt && min_dt!=0) {
-	    min_dt = dt_min_pair;
-	  }
+	  if (same_ambiguity) continue;
+	  double dtA = std::abs(time_elec_alone[idx] - tA);
+	  double dtB = std::abs(time_elec_alone[idx] - tB);
+	  min_dt = std::min(min_dt, std::min(dtA, dtB));
 	}
+	// --- 2. Compare with time_track (no cluster check needed) ---
+	for (size_t idx = 0; idx < time_track.size(); ++idx) {
+	  double dtA = std::abs(time_track[idx] - tA);
+	  double dtB = std::abs(time_track[idx] - tB);
+	  min_dt = std::min(min_dt, std::min(dtA, dtB));
+	}
+	// store result
+	min_dt_for_pair[p] = min_dt;
       }
-      else{
-	min_dt = std::numeric_limits<double>::max();
-      }
-      // if(nb_elec_ptd_per_event - count_equal_clusters>2){
-      // 	cout<<"event = "<<event_number<<" min = "<<min_dt<<endl;
-      // }
-      // si toutes les autres traces appartiennent à la même ambiguïté, min_dt reste maximal
-      closest_elec = min_dt;
-      nb_elec_real = nb_elec_ptd_per_event - count_equal_clusters;
+
+
+    
       nb_elec_ptd_per_event=indices_calo_final.size();
-      if(indices_calo_final.size()==2 /*&& num_om[indices_calo_final.at(0)]!=num_om[indices_calo_final.at(1)]*/){//final search
-	//cout<<"event number "<<event_number<<endl;
-	num_om_elec_f.push_back(num_om_elec[indices_calo_final.at(0)]);
-	num_om_elec_f.push_back(num_om_elec[indices_calo_final.at(1)]);
-	if(num_om_elec[indices_calo_final.at(0)]==num_om_elec[indices_calo_final.at(1)]){
-	  hit_the_same_calo_hit=true;
+      for (size_t p = 0; p < pairs.size(); ++p) {
+	two_elec_more_350_keV=false;
+	int best_a = pairs[p][0];
+	int best_b = pairs[p][1];
+	num_om_elec_f.push_back(num_om_elec[best_a]);
+	num_om_elec_f.push_back(num_om_elec[best_b]);
+	//if(num_om_elec[best_a] == num_om_elec[best_b]) hit_the_same_calo_hit = true;
+	//if(energy_elec[best_a] == 0 || energy_elec[best_b] == 0) cellules_non_associated++;
+	if(cluster_elec_num[best_a] == cluster_elec_num[best_b]) same_cluster_elec = 1;
+	if(side_elec[best_a] == side_elec[best_b]) same_side_elec = 1;
+	//spatial computation 
+	delta_y_elec = abs(vertex_3D_start_y[best_a] - vertex_3D_start_y[best_b]);
+	delta_z_elec = abs(vertex_3D_start_z[best_a] - vertex_3D_start_z[best_b]);
+	delta_r_calo = sqrt(pow(vertex_3D_end_y[best_a] - vertex_3D_end_y[best_b],2) +
+			    pow(vertex_3D_end_z[best_a] - vertex_3D_end_z[best_b],2));
+	energy_elec_sum = energy_elec[best_a] + energy_elec[best_b];
+	closest_elec = min_dt_for_pair[p];
+	if(energy_elec[best_a] > 0.350 && energy_elec[best_b] > 0.350) two_elec_more_350_keV = true;
+	if(corrected_energy_elec.size() > 0)
+	  corrected_energy_elec_sum = corrected_energy_elec[best_a] + corrected_energy_elec[best_b];
+	//angle computation
+	double start_p1[3] = {vertex_3D_start_x[best_a], vertex_3D_start_y[best_a], vertex_3D_start_z[best_a]};
+	double start_p2[3] = {vertex_3D_start_x[best_b], vertex_3D_start_y[best_b], vertex_3D_start_z[best_b]};
+	double end_p1[3] = {vertex_3D_end_x[best_a], vertex_3D_end_y[best_a], vertex_3D_end_z[best_a]};
+	double end_p2[3] = {vertex_3D_end_x[best_b], vertex_3D_end_y[best_b], vertex_3D_end_z[best_b]};
+	if(!kinks_vec[best_a].empty()) {
+	  end_p1[0] = kinks_vec[best_a][0];
+	  end_p1[1] = kinks_vec[best_a][1];
+	  end_p1[2] = kinks_vec[best_a][2];
 	}
-	// if(nb_clusters-count_equal_clusters!=2){
-	//   cellules_non_associated++;
-	// }
-	if(energy_elec[indices_calo_final.at(0)]==0 || energy_elec[indices_calo_final.at(1)] == 0){
-	  cellules_non_associated++;
+	if(!kinks_vec[best_b].empty()) {
+	  end_p2[0] = kinks_vec[best_b][0];
+	  end_p2[1] = kinks_vec[best_b][1];
+	  end_p2[2] = kinks_vec[best_b][2];
 	}
-	//cout<<"taille indice finale : "<<indices_calo_final.size()<<"entrie  = "<<event_number<<endl;
-	if(cluster_elec_num[indices_calo_final.at(0)] == cluster_elec_num[indices_calo_final.at(1)]){
-	  same_cluster_elec=1;
-	}
-	if(side_elec[indices_calo_final.at(0)]==side_elec[indices_calo_final.at(1)]){
-	  same_side_elec=1;
-	}
-	if(particle_type.size()>0){	    //for magnetic field
-	  if((particle_type[indices_calo_final.at(0)]==1 && particle_type[indices_calo_final.at(1)]==-1) || (particle_type[indices_calo_final.at(0)]==-1 && particle_type[indices_calo_final.at(1)]==1)){
-	    has_an_electron_and_positron = 1;
-	  }
-	}
-	delta_r_calo=sqrt(pow(vertex_3D_end_y[indices_calo_final.at(0)]-vertex_3D_end_y[indices_calo_final.at(1)],2)+pow(vertex_3D_end_z[indices_calo_final.at(0)]-vertex_3D_end_z[indices_calo_final.at(1)],2));
-	energy_elec_sum=energy_elec[indices_calo_final.at(0)]+energy_elec[indices_calo_final.at(1)];
-	if(energy_elec[indices_calo_final.at(0)]>0.350 && energy_elec[indices_calo_final.at(1)]>0.350){
-          two_elec_more_350_keV = true;
-        }
+	angle_3D_between_ep_em = std::abs(compute_angle(start_p1, end_p1, start_p2, end_p2));
+	diff_time_elec = time_elec_alone[best_a] - time_elec_alone[best_b];
 
-	if(corrected_energy_elec.size()>0){
-	  corrected_energy_elec_sum = corrected_energy_elec[indices_calo_final.at(0)]+corrected_energy_elec[indices_calo_final.at(1)];
-	}
-		
-	delta_y_elec = abs(vertex_3D_start_y[indices_calo_final.at(0)]-vertex_3D_start_y[indices_calo_final.at(1)]);
-	delta_z_elec = abs(vertex_3D_start_z[indices_calo_final.at(0)]-vertex_3D_start_z[indices_calo_final.at(1)]);
-	//starting point of the two particles
-	double x1 = vertex_3D_start_x[indices_calo_final.at(0)];
-	double y1 = vertex_3D_start_y[indices_calo_final.at(0)];
-	double z1 = vertex_3D_start_z[indices_calo_final.at(0)];
-	double x1_ = vertex_3D_start_x[indices_calo_final.at(1)];
-	double y1_ = vertex_3D_start_y[indices_calo_final.at(1)];
-	double z1_ = vertex_3D_start_z[indices_calo_final.at(1)];	
-	//ending point of the two particles
-	double x2 = vertex_3D_end_x[indices_calo_final.at(0)];
-	double y2 = vertex_3D_end_y[indices_calo_final.at(0)];
-	double z2 = vertex_3D_end_z[indices_calo_final.at(0)];
-	double x2_ = vertex_3D_end_x[indices_calo_final.at(1)];
-	double y2_ = vertex_3D_end_y[indices_calo_final.at(1)];
-	double z2_ = vertex_3D_end_z[indices_calo_final.at(1)];	
-	if(kinks_vec[indices_calo_final.at(0)].size()>0){
-	  x2 = kinks_vec[indices_calo_final.at(0)][0];
-	  y2 = kinks_vec[indices_calo_final.at(0)][1];
-	  z2 = kinks_vec[indices_calo_final.at(0)][2];
-	}
-	if(kinks_vec[indices_calo_final.at(1)].size()>0){
-	  x2 = kinks_vec[indices_calo_final.at(1)][0];
-	  y2 = kinks_vec[indices_calo_final.at(1)][1];
-	  z2 = kinks_vec[indices_calo_final.at(1)][2];
-	}
-	double start_p1[3] = {x1, y1, z1};
-	double start_p2[3] = {x1_, y1_, z1_};
-	double end_p1[3] = {x2, y2, z2};
-	double end_p2[3] = {x2_, y2_, z2_};	
-	angle_3D_between_ep_em = abs(compute_angle(start_p1, end_p1, start_p2, end_p2));
-	diff_time_elec = time_elec[indices_calo_final.at(0)]-time_elec[indices_calo_final.at(1)];
-
-	
-	//electron crossing or pair creation ??
-	double new_c = 299.792458;//change c unit to mm/ns
-	double track_length_1 = sqrt(pow(x1-x2,2) + pow(y1-y2,2) + pow(z1-z2,2));
-	double E_1 = energy_elec[indices_calo_final.at(0)];
-	double beta_1 = sqrt(E_1*(E_1+2*0.511))/(E_1+0.511);	
+	//TOF computation
+	double new_c = 299.792458; // mm/ns
+	double track_length_1 = sqrt(pow(start_p1[0]-end_p1[0],2) + pow(start_p1[1]-end_p1[1],2) + pow(start_p1[2]-end_p1[2],2));
+	double track_length_2 = sqrt(pow(start_p2[0]-end_p2[0],2) + pow(start_p2[1]-end_p2[1],2) + pow(start_p2[2]-end_p2[2],2));
+	double beta_1 = sqrt(energy_elec[best_a]*(energy_elec[best_a]+2*0.511)) / (energy_elec[best_a]+0.511);
+	double beta_2 = sqrt(energy_elec[best_b]*(energy_elec[best_b]+2*0.511)) / (energy_elec[best_b]+0.511);
 	double t_1 = track_length_1/(beta_1*new_c);
-	double track_length_2 = sqrt(pow(x1_-x2_,2) + pow(y1_-y2_,2) + pow(z1_-z2_,2));
-	double E_2 = energy_elec[indices_calo_final.at(1)];
-	double beta_2 = sqrt(E_2*(E_2+2*0.511))/(E_2+0.511);
 	double t_2 = track_length_2/(beta_2*new_c);
-	internal_theoretical_time_diff = (t_1-t_2) - diff_time_elec;
-	external_theoretical_time_diff = abs(diff_time_elec) - (t_1+t_2) ;
+
+	internal_theoretical_time_diff = (t_1 - t_2) - diff_time_elec;
+	external_theoretical_time_diff = std::abs(diff_time_elec) - (t_1 + t_2);
 	t1_th = t_1;
 	t2_th = t_2;
 	track_lenght.push_back(track_length_1);
 	track_lenght.push_back(track_length_2);
-	// if(internal_theoretical_time_diff<-2){
-	// cout<<"entry "<<event_number<<endl;
-	// cout<<"t1 th = "<<t_1<<" t2 th "<< t_2<< " diff time elec "<<diff_time_elec<<endl;
-	// cout<<"t1 exp = "<<time_elec[indices_calo_final.at(0)]<<" t2 exp "<< time_elec[indices_calo_final.at(1)]<<endl;
- 	
-	// //Errorbar to compute and add to conclude
-	// cout<<"internal " <<internal_theoretical_time_diff<<" external "<<external_theoretical_time_diff<<endl;
-	// cout<<endl;
-	// }
-	
-      
-	for(int time_gamma_value=0; time_gamma_value<time_gamma.size();time_gamma_value++){
-	  if(energy_gamma.at(time_gamma_value)<0.350) continue; //threshold on gammas
-	  
-	  time_gamma_after.push_back(time_gamma.at(time_gamma_value)-*std::max_element(time_elec.begin(),time_elec.end()));
-	  time_gamma_before.push_back(time_gamma.at(time_gamma_value)-*std::min_element(time_elec.begin(),time_elec.end()));
-	  energy_gamma_after.push_back(energy_gamma.at(time_gamma_value));
-	  //no problem with time and energy for double case beacuse it is the same
-	  if(nb_gamma==1){
-	    // double x_foil, y_foil, z_foil;
-	    // double x_gamma, y_gamma, z_gamma;
-	    // x_gamma = vertex_gamma_tot[0][0];
-	    // y_gamma = vertex_gamma_tot[0][1];
-	    // z_gamma = vertex_gamma_tot[0][2];
-	    // x_foil = vertex_3D_start_x[indices_calo_final.at(0)];
-	    // y_foil = vertex_3D_start_y[indices_calo_final.at(0)];
-	    // z_foil = vertex_3D_start_z[indices_calo_final.at(0)];
-	    // time_of_flight_gamma = sqrt((x_foil-x_gamma)*(x_foil-x_gamma)+(y_foil-y_gamma)*(y_foil-y_gamma)+(z_foil-z_gamma)*(z_foil-z_gamma));
-	    if(vertex_gamma[0]!=side_elec[indices_calo_final.at(0)] && same_side_elec==1){
+
+	//gamma loop -> compute time differences with all gammas
+	std::vector<double> gamma_dt;     
+	std::vector<double> gamma_energy; 
+	double tA = time_elec_alone[best_a];
+	double tB = time_elec_alone[best_b];
+	for (size_t g = 0; g < time_gamma.size(); ++g) {
+	  if (energy_gamma[g] < 0.350) continue;
+	  double tγ = time_gamma[g];
+	  double dtA = std::abs(tγ - tA);
+	  double dtB = std::abs(tγ - tB);
+	  double dt_min = std::min(dtA, dtB);
+	  gamma_dt.push_back(dt_min);
+	  gamma_energy.push_back(energy_gamma[g]);
+	  if (nb_gamma == 1 &&
+	      vertex_gamma[0] != side_elec[best_a] &&
+	      same_side_elec == 1)
+	    {
 	      opposite_side_e_gamma = 1;
 	    }
-	  }
-	}//end gamma loop
-	for (size_t i = 0; i < time_gamma_after.size(); i++) {
-	  double abs_after = std::abs(time_gamma_after[i]);
-	  double abs_before = std::abs(time_gamma_before[i]);
+	}
+	// --- find closest gamma wrt the e− pair ------------------------------------
+	closest_gamma = 1e9;  
+	for (double dt : gamma_dt) {
+	  if (std::abs(dt) < std::abs(closest_gamma))
+	    closest_gamma = dt;
+	}
 
-	  if (abs_after < std::abs(closest_gamma)) closest_gamma = time_gamma_after[i];
-	  if (abs_before < std::abs(closest_gamma)) closest_gamma = time_gamma_before[i];
-	} 
-	
-      }
-      if(indices_calo_final.size()==2){
-	tree->Fill();
-      }
-      event_number++;      
+	// --- find closest alpha wrt the e− pair ------------------------------------
+	closest_alpha = 1e9;
+	alpha_elec_time_diff = 1e9;
+	double time_closest_alpha = -1;
+	for (size_t i = 0; i < vertex_3D_track_y.size(); i++) {
+	  double dy = vertex_3D_track_y[i] - vertex_3D_start_y[best_a];
+	  double dz = vertex_3D_track_z[i] - vertex_3D_start_z[best_a];
+	  double dist = std::sqrt(dy*dy + dz*dz);
+	  if (dist < closest_alpha){
+	    closest_alpha = dist;
+	    time_closest_alpha = mean_alpha_anodic_time[i];
+	  }
+	}
+	if(vertex_3D_track_y.size()>0){
+	    double dtA = std::abs(time_closest_alpha - tA);
+	    double dtB = std::abs(time_closest_alpha - tB);
+	    alpha_elec_time_diff = std::min(dtA, dtB);
+	  }
+      	tree->Fill();//tree is fill for every pairs
+            
+      }// end pair computation
+      event_number++;
     }
   return dpp::base_module::PROCESS_SUCCESS;
 }
