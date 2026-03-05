@@ -4,6 +4,7 @@
 #include <falaise/snemo/datamodels/tracker_trajectory_data.h>
 #include <falaise/snemo/datamodels/tracker_clustering_data.h>
 #include <falaise/snemo/datamodels/tracker_cluster.h>
+#include <falaise/snemo/datamodels/precalibrated_data.h>
 #include <falaise/snemo/datamodels/geomid_utils.h>
 #include <falaise/snemo/datamodels/event_header.h>
 #include <bayeux/mctools/base_step_hit.h>
@@ -58,8 +59,8 @@ private:
   vector<string>  type_elec, g4_process, material, vertex_type, g4_material;
   vector<int> gamma_type, num_om, num_om_elec, track_number, num_gg, num_om_elec_f, num_om_gamma, num_om_track, indices_calo_final;
   vector<double> time_gamma, time_gamma_before, time_gamma_after, angle_SD, volume, total_step_length;
-  vector<double> energy_gamma, energy_elec, corrected_energy_elec, time_elec, time_elec_alone,track_lenght, energy_gamma_after, vertex_SD_x, vertex_SD_y, vertex_SD_z, ellipse_source, time_track, energy_track, chi2_track;
-  vector<double> vertex_3D_start_x, vertex_3D_start_y, vertex_3D_start_z,vertex_3D_end_x, vertex_3D_end_y, vertex_3D_end_z, vertex_gamma, kink_x, kink_y, kink_z, vertex_3D_track_y, vertex_3D_track_z, mean_alpha_anodic_time, vertex_ttd_start_x, vertex_ttd_start_y, vertex_ttd_start_z, vertex_ttd_end_x, vertex_ttd_end_y, vertex_ttd_end_z;
+  vector<double> energy_gamma, energy_elec, corrected_energy_elec, time_elec, time_elec_alone,track_lenght, energy_gamma_after, vertex_SD_x, vertex_SD_y, vertex_SD_z, ellipse_source, time_track, energy_track, chi2_track, timestamp_elec_alone;
+  vector<double> vertex_3D_start_x, vertex_3D_start_y, vertex_3D_start_z,vertex_3D_end_x, vertex_3D_end_y, vertex_3D_end_z, vertex_gamma, kink_x, kink_y, kink_z, vertex_3D_track_y, vertex_3D_track_z, mean_alpha_anodic_time, vertex_ttd_start_x, vertex_ttd_start_y, vertex_ttd_start_z, vertex_ttd_end_x, vertex_ttd_end_y, vertex_ttd_end_z, mean_alpha_anodic_timestamp;
   vector<int> side_elec, cluster_elec_num, calo_num, nb_kink_per_track;
   TFile *save_file;
   TTree *tree;
@@ -509,10 +510,12 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
   corrected_energy_elec.clear();
   time_elec.clear();
   time_elec_alone.clear();
+  timestamp_elec_alone.clear();
   time_track.clear();
   track_lenght.clear();
   energy_gamma.clear();
   mean_alpha_anodic_time.clear();
+  mean_alpha_anodic_timestamp.clear();
   vertex_3D_start_x.clear();
   vertex_3D_start_y.clear();
   vertex_3D_start_z.clear();
@@ -580,6 +583,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
   closest_time_track = 1e6;
   closest_track = 1e6;
   bool projected_vertex = false;
+  bool has_tracks=false;
   std::vector<double> x_alpha;
   std::vector<double> y_alpha;
   std::vector<double> z_alpha;
@@ -651,6 +655,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
         }
       }
           const snemo::datamodel::tracker_clustering_data & TCD = event.get<snemo::datamodel::tracker_clustering_data>("TCD");
+	  const snemo::datamodel::precalibrated_data & pCD = event.get<snemo::datamodel::precalibrated_data>("pCD");
       const snemo::datamodel::tracker_clustering_solution & tcd_solution = TCD.get_default();
       nb_unfitted_cells=tcd_solution.get_unclustered_hits().size();
 
@@ -804,6 +809,8 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 		kinks_vec.push_back({});
 	      }
 	      calo_num.push_back(snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id()));
+	      const datatools::handle<snemo::datamodel::precalibrated_calorimeter_hit> & pcd_calo_hit = pCD.calorimeter_hits()[calorimeter_hits[0]->get_hit_id()];
+	      timestamp_elec_alone.push_back(pcd_calo_hit->get_time()/CLHEP::ns);
 	      energy_elec.push_back(calorimeter_hits[0]->get_energy());
 	      time_elec.push_back(calorimeter_hits[0]->get_time()/ CLHEP::ns);
 	      time_elec_alone.push_back(calorimeter_hits[0]->get_time()/ CLHEP::ns);
@@ -851,8 +858,10 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	      const auto gg = particle->get_trajectory_handle()->get_cluster().hits();
 	      double sum = 0;
 	      int n = 0;
+	      vector<int> alpha_gg_num;
 	      for (const auto hits : gg) {
 		sum += hits->get_anode_time() / CLHEP::ns;
+		alpha_gg_num.push_back(snemo::datamodel::gg_num(hits->get_geom_id()));
 		//std::cout << hits->get_anode_time() / CLHEP::ns << std::endl;
 		//	if (hits->has_xy()) {
 		//pos_vec.push_back({ hits->get_x()/CLHEP::mm, hits->get_y()/CLHEP::mm });
@@ -860,7 +869,23 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 		n++;
 	      }
 	      double mean = (n ? sum / n : 0);
-	      mean_alpha_anodic_time.push_back(mean);
+	      if (TMath::IsNaN(mean)) {
+		has_tracks=true;
+		double sum_cell = 0;
+		int n_cell = 0;
+		const auto pCD_tracker_hits = pCD.tracker_hits();
+		for(const auto pCD_track_hits : pCD_tracker_hits){
+		  if(std::find(alpha_gg_num.begin(), alpha_gg_num.end(), snemo::datamodel::gg_num(pCD_track_hits->get_geom_id())) != alpha_gg_num.end() ){
+		    sum_cell+=pCD_track_hits->get_anodic_time()/ CLHEP::ns;
+		    n_cell++;
+		  }
+		}
+		double new_mean = sum_cell/n_cell;
+		mean_alpha_anodic_timestamp.push_back(new_mean);
+	      }
+	      else{
+		mean_alpha_anodic_time.push_back(mean);
+	      }
  	      projected_vertex = vertex_close_to_the_source;
 	      if(vertex_close_to_the_source){
 		x_alpha.push_back(x_foil);
@@ -1048,6 +1073,8 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	std::vector<double> gamma_energy; 
 	double tA = time_elec_alone[best_a];
 	double tB = time_elec_alone[best_b];
+	double timestampA = timestamp_elec_alone[best_a];
+	double timestampB = timestamp_elec_alone[best_b];
 	for (size_t g = 0; g < time_gamma.size(); ++g) {
 	  if (energy_gamma[g] < 0.050) continue;
 	  double tγ = time_gamma[g];
@@ -1078,7 +1105,17 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process (datatool
 	    closest_alpha_dt = dt;
 	}	
 	closest_time_track = closest_alpha_dt;
-       
+	double closest_alpha_dt_delayed = 1e9;
+	if(has_tracks==1){
+	  //if cluster is delayed but not time well calculated
+	  for (double t_alpha : mean_alpha_anodic_timestamp) {
+	    double dt = std::min(std::abs(t_alpha - timestampA), std::abs(t_alpha - timestampB));
+	    if (dt < closest_alpha_dt_delayed)
+	      closest_alpha_dt_delayed = dt;
+	  } 
+	
+	closest_time_track = closest_alpha_dt_delayed;
+	}
 	//remove alpha tracks not in time but close in distance
 	double closest_alpha_dist = 1e9;
 	//if(projected_vertex==1){
