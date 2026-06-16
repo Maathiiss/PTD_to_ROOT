@@ -11,6 +11,7 @@
 #include <bayeux/mctools/simulated_data.h>
 #include <falaise/snemo/datamodels/unified_digitized_data.h>
 #include "TFile.h"
+#include <cstdint>
 #include "TTree.h"
 #include <vector>
 #include <string>
@@ -112,6 +113,46 @@ double end_trip_time(int run_number) {
     return -1;
 }
 
+// Load per-OM energy thresholds from a text file.
+// File format: one line per OM → "om_id  threshold_MeV"
+// Returns a vector indexed by OM number (size = max_om + 1).
+// If the file cannot be opened, fills with fallback_threshold.
+
+inline std::vector<double> load_om_thresholds(const std::string& filepath,double fallback_threshold = 0.350){
+    std::vector<double> thresholds(712, fallback_threshold);
+    std::ifstream f(filepath);
+    if (!f.is_open()) {
+        std::cerr << "[WARNING] Could not open threshold file: "
+                  << filepath
+                  << " — using fallback " << fallback_threshold
+                  << " MeV\n";
+        return thresholds;
+    }
+    std::string line;
+    // Ignore l'en-tête
+    std::getline(f, line);
+    while (std::getline(f, line)) {
+        if (line.empty())
+            continue;
+        std::stringstream ss(line);
+        std::string om_str, charge_str, energy_str;
+        std::getline(ss, om_str, ';');
+        std::getline(ss, charge_str, ';');
+        std::getline(ss, energy_str, ';');
+        if (om_str.empty())
+            continue;
+        int om_id = std::stoi(om_str);
+        // Cas des lignes du type "0;;" ou "12;;"
+        if (energy_str.empty())
+            continue;
+        double thr = std::stod(energy_str);
+        if (om_id >= static_cast<int>(thresholds.size()))
+            thresholds.resize(om_id + 1, fallback_threshold);
+        thresholds[om_id] = thr;
+    }
+    return thresholds;
+}
+
 // ============================================================================
 // Main Module Class
 // ============================================================================
@@ -128,12 +169,13 @@ private:
     // ========== CONFIGURATION & STATE ==========
     TFile *save_file;
     TTree *tree;
-    int event_number, ptd_event_counter, last_event_number;
+    int ptd_event_counter;
+    std::int64_t event_number;
     bool ptd_details, ttd_details, sd_calo_details, sd_tracker_details;
 
     // ========== EVENT VARIABLES - Scalars ==========
     int cellules_non_associated, cellules_SD_non_associated, number_of_kinks;
-    int run_number, nb_elec_real, trigger_id, nb_unfitted_cells;
+    int run_number, trigger_id, nb_unfitted_cells, _simulation_phase_;
     int nb_gamma, nb_elec_ptd_per_event, nb_elec_SD_per_event, nb_wire_hit;
     
     bool has_an_electron_and_positron, has_SD_electron_and_positron;
@@ -148,7 +190,7 @@ private:
     double one_kink_x, one_kink_y, one_kink_z, total_volume;
     double unix_start_time, first_time, last_time;
     double closest_gamma, closest_elec, closest_track, alpha_elec_time_diff;
-    double energy_elec_1, energy_elec_2;
+    double energy_elec_1, energy_elec_2, current_timestamp;
     double vertex_3D_projected_x, vertex_3D_projected_y, vertex_3D_projected_z;
     double real_vertex_SD_x, real_vertex_SD_y, real_vertex_SD_z;
     double closest_time_track;
@@ -159,11 +201,11 @@ private:
     vector<int> num_om_elec_f, num_om_track, indices_calo_final;
     vector<double> time_gamma, time_gamma_before, time_gamma_after, angle_SD;
     vector<double> volume, total_step_length, energy_gamma, energy_elec, num_om_gamma;
-  vector<double> corrected_energy_elec, time_elec, time_elec_alone, individual_energy_elec;
-  vector<double> track_lenght, energy_gamma_after, kink_angle;
+    vector<double> corrected_energy_elec, time_elec, time_elec_alone, individual_energy_elec;
+    vector<double> track_lenght, energy_gamma_after, kink_angle;
     vector<double> vertex_SD_x, vertex_SD_y, vertex_SD_z;
     vector<double> time_track, energy_track, chi2_track;
-    vector<double> timestamp_elec_alone;
+  vector<double> timestamp_elec_alone;
     vector<double> vertex_3D_start_x, vertex_3D_start_y, vertex_3D_start_z, track_length_vector;
     vector<double> vertex_3D_end_x, vertex_3D_end_y, vertex_3D_end_z;
     vector<double> vertex_gamma, kink_x, kink_y, kink_z;
@@ -178,11 +220,17 @@ private:
     std::vector<double> z_source_pos;
     std::vector<double> source_pos_num;
 
+    // ========== PER-PHASE, PER-OM ENERGY THRESHOLDS ==========
+    // Loaded once at initialize() from energy_threshold_phase_N.txt
+    // Indexed by OM number; one vector per phase (0-3).
+    std::string threshold_dir;                        // directory containing the files
+    std::vector<std::vector<double>> om_thresholds;   // om_thresholds[phase][om_id]
+
     // ========== PRIVATE METHODS ==========
     void initSourcePositions();
     void resetEventVariables();
     void processSimulatedData(datatools::things& event);
-    void processEventHeader(datatools::things& event);
+    bool processEventHeader(datatools::things& event);
     void processTrackerData(datatools::things& event);
     void processGammas(const snemo::datamodel::particle_track_data& PTD);
     void processElectrons(const snemo::datamodel::particle_track_data& PTD,
@@ -193,7 +241,7 @@ private:
                          std::vector<double>& z_alpha,
                          std::vector<int>& indices_for_pairs,
                          std::vector<int>& cluster_id);
-    
+  double compute_ellipse(double y_vertex, double z_vertex, int& source_num, double &dy, double &dz) const;    
     void processElectronVertex(
         const datatools::handle<snemo::datamodel::particle_track>& particle,
         const snemo::datamodel::precalibrated_data& pCD,
@@ -260,7 +308,8 @@ private:
                           const double* start_p2, const double* end_p2);
     
     double extract_unix_start_time(int run_number) const;
-
+    int get_phase(int run_number);
+  
     DPP_MODULE_REGISTRATION_INTERFACE(falaise_skeleton_module_ptd);
 };
 
@@ -310,7 +359,6 @@ falaise_skeleton_module_ptd::falaise_skeleton_module_ptd() : dpp::chain_module()
     tree->Branch("vertex_ttd_end_z", &vertex_ttd_end_z);
     tree->Branch("delta_r_calo", &delta_r_calo);
     tree->Branch("nb_elec_ptd_per_event", &nb_elec_ptd_per_event);
-    tree->Branch("nb_elec_real", &nb_elec_real);
     tree->Branch("energy_elec", &energy_elec);
     tree->Branch("num_om", &num_om);
     tree->Branch("num_om_gamma", &num_om_gamma);
@@ -361,6 +409,7 @@ falaise_skeleton_module_ptd::falaise_skeleton_module_ptd() : dpp::chain_module()
     tree->Branch("nb_unfitted_cells", &nb_unfitted_cells);
     tree->Branch("nb_kink_per_track", &nb_kink_per_track);
     tree->Branch("has_kinks", &has_kinks);
+    tree->Branch("current_timestamp", &current_timestamp);
 }
 
 // ============================================================================
@@ -368,11 +417,11 @@ falaise_skeleton_module_ptd::falaise_skeleton_module_ptd() : dpp::chain_module()
 // ============================================================================
 falaise_skeleton_module_ptd::~falaise_skeleton_module_ptd() {
     double time = last_time - first_time;
-    int last_event_number = event_number;
+    std::int64_t last_event_number = event_number;
     save_file->cd();
     TParameter<double> param("run_time", time);
     param.Write();
-    TParameter<int> param_num("last_event_number", last_event_number);
+    TParameter<Long64_t> param_num("last_event_number", last_event_number);
     param_num.Write();
     tree->Write();
     save_file->Close();
@@ -410,6 +459,33 @@ void falaise_skeleton_module_ptd::initSourcePositions() {
     };
 }
 
+
+
+double falaise_skeleton_module_ptd::compute_ellipse(double y_vertex, double z_vertex, int& source_num, double &best_dy, double &best_dz) const
+{
+  best_dy = 0.0;
+  best_dz = 0.0;
+
+  double min_dist2 = std::numeric_limits<double>::max();
+
+  for (size_t i = 0; i < y_source_pos.size(); ++i) {
+    double dy = y_source_pos[i] - y_vertex;
+    double dz = z_source_pos[i] - z_vertex;
+    double dist2 = (dy * dy) / (25.0 * 25.0) + (dz * dz) / (30.0 * 30.0);
+
+    if (dist2 < min_dist2) {
+      min_dist2 = dist2;
+      source_num = source_pos_num[i];
+      best_dy = dy;
+      best_dz = dz;
+    }
+  }
+
+  return min_dist2; // distance minimale                                                                 
+}
+
+
+
 // ============================================================================
 // Reset all event variables
 // ============================================================================
@@ -422,7 +498,6 @@ void falaise_skeleton_module_ptd::resetEventVariables() {
     cellules_SD_non_associated = 0;
     number_of_kinks = 0;
     nb_unfitted_cells = 0;
-    
     gamma_type.clear();
     time_gamma.clear();
     time_gamma_before.clear();
@@ -533,6 +608,7 @@ void falaise_skeleton_module_ptd::initialize(const datatools::properties& module
     ptd_event_counter = 0;
     first_time = 0;
     last_time = 0;
+    unix_start_time = 0;
 
     ptd_details = module_properties.has_key("ptd_details") ?
                   module_properties.fetch_boolean("ptd_details") : false;
@@ -541,7 +617,25 @@ void falaise_skeleton_module_ptd::initialize(const datatools::properties& module
     sd_calo_details = module_properties.has_key("calo_details") ?
                       module_properties.fetch_boolean("calo_details") : false;
     sd_tracker_details = module_properties.has_key("tracker_details") ?
-                         module_properties.fetch_boolean("tracker_details") : false;
+      module_properties.fetch_boolean("tracker_details") : false;
+
+    if (module_properties.has_key("simulation_phase")) {
+      _simulation_phase_ = module_properties.fetch_integer("simulation_phase");
+    }
+    // Load per-phase, per-OM energy thresholds
+    threshold_dir = "/sps/nemo/scratch/margnes/data/seuil_max";
+    om_thresholds.resize(5);
+    for (int phase = 0; phase <= 4; ++phase) {
+      double threshold_value = 0.35;
+      if(phase != 0){
+	threshold_value=0.05;
+      }
+        std::string fname = threshold_dir + "/phase" + std::to_string(phase) + ".txt";
+        om_thresholds[phase] = load_om_thresholds(fname,threshold_value);
+        std::cout << "Loaded thresholds for phase " << phase
+                  << " from " << fname
+                  << " (" << om_thresholds[phase].size() << " OMs)\n";
+    }
 
     this->_set_initialized(true);
 }
@@ -576,7 +670,7 @@ void falaise_skeleton_module_ptd::processSimulatedData(datatools::things& event)
 // ============================================================================
 // Process Event Header
 // ============================================================================
-void falaise_skeleton_module_ptd::processEventHeader(datatools::things& event) {
+bool falaise_skeleton_module_ptd::processEventHeader(datatools::things& event) {
     const snemo::datamodel::event_header& eh = event.get<snemo::datamodel::event_header>("EH");
     run_number = eh.get_id().get_run_number();
 
@@ -590,17 +684,7 @@ void falaise_skeleton_module_ptd::processEventHeader(datatools::things& event) {
         }
     }
 
-    if (eh.has_timestamp()) {
-        double time = (eh.get_timestamp().get_seconds() +
-                      eh.get_timestamp().get_picoseconds() / 1E12) * 1e-9;
-        if (time > end_trip_time(run_number) && end_trip_time(run_number) != 0) {
-            event_number++;
-            throw dpp::base_module::PROCESS_SUCCESS;
-        }
-        last_time = time;
-        if (first_time == 0) first_time = time;
-    }
-
+    // Charger unix_start_time AVANT le test temporel
     if (unix_start_time == 0) {
         if (run_number < 1556) {
             unix_start_time = snemo_run_time(run_number);
@@ -608,6 +692,27 @@ void falaise_skeleton_module_ptd::processEventHeader(datatools::things& event) {
             unix_start_time = extract_unix_start_time(run_number);
         }
     }
+
+    if (eh.has_timestamp()) {
+        double time = eh.get_timestamp().get_seconds() +
+                      eh.get_timestamp().get_picoseconds() / 1E12;
+	current_timestamp = time;
+        double trip_end = end_trip_time(run_number);
+        //cout << event_number << " time=" << time
+	//   << " limit=" << unix_start_time + trip_end
+	//   << " unix_start=" << unix_start_time
+	//   << " trip_end=" << trip_end
+	//   <<" diff "<<time - (unix_start_time + trip_end)
+	//   << endl;
+        if (time > unix_start_time + trip_end && trip_end > 0) {
+	  //cout<<"SHOULD BREAK "<<endl;
+            event_number++;
+	    return false;
+        }
+        last_time = time;
+        if (first_time == 0) first_time = time;
+    }
+    return true;
 }
 
 // ============================================================================
@@ -642,10 +747,25 @@ void falaise_skeleton_module_ptd::processTrackerData(datatools::things& event) {
 // ============================================================================
 void falaise_skeleton_module_ptd::processGammas(const snemo::datamodel::particle_track_data& PTD) {
     if (!PTD.hasIsolatedCalorimeters()) return;
-
-    const snemo::datamodel::CalorimeterHitHdlCollection& cc_collection =
-        PTD.isolatedCalorimeters();
+    const snemo::datamodel::CalorimeterHitHdlCollection& cc_collection = PTD.isolatedCalorimeters();
     for (const auto& it_hit : cc_collection) {
+      double energy_threshold = 0.0; // fallback                                                
+      int om_id = snemo::datamodel::om_num(it_hit->get_geom_id());
+      int phase  = get_phase(run_number);
+      if (phase >= 0 && phase <= 4 && om_id >= 0) {
+	// if threshold is wanted :                                                        
+	energy_threshold = om_thresholds[phase][om_id];                                  
+	//cout<<event_number<<" "<<energy_threshold<<" "<<phase<<" "<<om_id<<endl;                                                              
+	// if no threshold is wanted :                                                     
+	//if(phase==0){
+	//energy_threshold = 0.35;
+	//}
+	//else{
+	//energy_threshold = 0.05;
+	//}
+      }
+      //cout<<phase<<" "<<energy_threshold<<endl;
+      if(it_hit->get_energy()<energy_threshold) continue;
         energy_gamma.push_back(it_hit->get_energy());
         gamma_type.push_back(it_hit->get_geom_id().get(0));
         vertex_gamma.push_back(it_hit->get_geom_id().get(1));
@@ -707,20 +827,40 @@ void falaise_skeleton_module_ptd::processElectronVertex(
     extractElectronVertices(particle, vertex_close_to_source, vertex_associated_to_calo,
                            x_foil, y_foil, z_foil, x_calo, y_calo, z_calo);
 
-    // Step 4: Dispatch to specialized handler based on vertex type
+    // Step 4: Get the OM-specific energy threshold for the current run/phase
+    double energy_threshold = 0.0; // fallback
+    if (calorimeter_hits.size() == 1) {
+        int om_id = snemo::datamodel::om_num(calorimeter_hits[0]->get_geom_id());
+        int phase  = get_phase(run_number);
+        if (phase >= 0 && phase <= 4 && om_id >= 0) {
+	  // if threshold is wanted :
+	  energy_threshold = om_thresholds[phase][om_id];
+	  //cout<<event_number<<" "<<energy_threshold<<" "<<phase<<" "<<om_id<<" "<<calorimeter_hits[0]->get_energy()<<endl;
+	  // if no threshold is wanted :
+	  //if(phase==0){
+	  //  energy_threshold = 0.35;
+	  //}
+	  //else{
+	  //  energy_threshold = 0.05;
+	  //}
+	}
+	//cout<<phase<<" "<<energy_threshold<<endl;
+    }
+    
+    // Step 5: Dispatch to specialized handler based on vertex type
     if (vertex_close_to_source && vertex_associated_to_calo &&
-        calorimeter_hits.size() == 1 && calorimeter_hits[0] > 0.350) {
+        calorimeter_hits.size() == 1 && calorimeter_hits[0]->get_energy() > energy_threshold) {
         // Case 1: Good electron (source + calo)
         found_good_electron = true;
         processGoodElectron(particle, pCD, x_foil, y_foil, z_foil, x_calo, y_calo, z_calo,
                            kinks_vec, indice_elec, indices_for_pairs);
 
     } else if (vertex_associated_to_calo && !vertex_close_to_source &&
-               calorimeter_hits.size() == 1 && calorimeter_hits[0] > 0.350) {
+               calorimeter_hits.size() == 1 && calorimeter_hits[0]->get_energy() > energy_threshold) {
         // Case 2: Track only (no source vertex)
         processTrackOnlyElectron(particle);
 
-    } else if (calorimeter_hits.size() == 0 || calorimeter_hits[0] < 0.350) {
+    } else if (calorimeter_hits.size() == 0 || calorimeter_hits[0]->get_energy() < energy_threshold) {
         // Case 3: Alpha track (no calo hit)
         processAlphaTrack(particle, pCD, vertex_close_to_source,
                          x_foil, y_foil, z_foil, x_alpha, y_alpha, z_alpha);
@@ -1226,7 +1366,6 @@ void falaise_skeleton_module_ptd::analyzeGammasForPair(
     std::vector<double> gamma_energy;
 
     for (size_t g = 0; g < time_gamma.size(); ++g) {
-        if (energy_gamma[g] < 0.350) continue;
         double tgamma = time_gamma[g];
         double dtA = std::abs(tgamma - tA);
         double dtB = std::abs(tgamma - tB);
@@ -1311,9 +1450,7 @@ dpp::chain_module::process_status falaise_skeleton_module_ptd::process(datatools
     }
 
     // ===== STEP 2: Process event header =====
-    try {
-        processEventHeader(event);
-    } catch (const dpp::base_module::process_status&) {
+    if (!processEventHeader(event)) {
         return dpp::base_module::PROCESS_SUCCESS;
     }
 
@@ -1354,4 +1491,21 @@ double falaise_skeleton_module_ptd::extract_unix_start_time(int run_number) cons
     fscanf(pipe, "%lf", &timestamp);
     pclose(pipe);
     return timestamp;
+}
+
+// ============================================================================
+// Phase determination based on run number (from data-taking table)
+// Phase 0: runs 1546-1798  (high threshold 300 keV + 7% tracker missing)
+// Phase 1: runs 2011-2183  (high threshold 30 keV  + 7% tracker missing)
+// Phase 2: runs 2683-3467  (high threshold 30 keV  + full tracker)
+// Phase 3: runs 3470+      (phase 2 + low Rn activity)
+// ============================================================================
+int falaise_skeleton_module_ptd::get_phase(int run_number) {
+    if(run_number == -2) return _simulation_phase_;
+    if (run_number >= 1546 && run_number <= 1798) return 0;
+    if (run_number >= 2011 && run_number <= 2183) return 1;
+    if (run_number >= 2683 && run_number <= 2869) return 2;
+    if (run_number >= 2869 && run_number <= 3467) return 3;
+    if (run_number >= 3470) return 4;
+    return -1;
 }
